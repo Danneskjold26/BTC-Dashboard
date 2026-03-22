@@ -1560,8 +1560,7 @@ function renderCyclePosition() {
   var ruleDates = [
     { d: dFundo,   label: 'Nov 22',   col: '#5a6080',  bold: false },
     { d: new Date('2023-06-01'), label: 'Jun 23', col: '#3a4060', bold: false },
-    { d: dHalving, label: 'Halving
-Abr 24', col: '#f0a840', bold: true  },
+    { d: dHalving, label: 'Halving Abr 24', col: '#f0a840', bold: true  },
     { d: new Date('2025-01-01'), label: 'Jan 25', col: '#3a4060', bold: false },
     { d: dTopMin,  label: 'Out 25',   col: '#4fd98a',  bold: true  },
     { d: dTopMax,  label: 'Nov 25',   col: '#4fd98a',  bold: false },
@@ -1578,15 +1577,7 @@ Abr 24', col: '#f0a840', bold: true  },
     if (rx < ox || rx > ox + W) return;
     // tick
     html += '<line x1="' + rx + '" y1="18" x2="' + rx + '" y2="26" stroke="' + rd.col + '" stroke-width="' + (rd.bold ? '1.5' : '0.8') + '" opacity=".7"/>';
-    // label (split on 
- for two-line labels)
-    var parts = rd.label.split('\n');
-    if (parts.length === 2) {
-      html += '<text x="' + rx + '" y="10" text-anchor="middle" font-size="7.5" fill="' + rd.col + '" font-family="monospace" font-weight="' + (rd.bold ? '600' : '400') + '" opacity=".9">' + parts[0] + '</text>';
-      html += '<text x="' + rx + '" y="18" text-anchor="middle" font-size="7" fill="' + rd.col + '" font-family="monospace" opacity=".8">' + parts[1] + '</text>';
-    } else {
-      html += '<text x="' + rx + '" y="13" text-anchor="middle" font-size="7.5" fill="' + rd.col + '" font-family="monospace" font-weight="' + (rd.bold ? '600' : '400') + '" opacity=".9">' + rd.label + '</text>';
-    }
+    html += '<text x="' + rx + '" y="13" text-anchor="middle" font-size="7.5" fill="' + rd.col + '" font-family="monospace" font-weight="' + (rd.bold ? '600' : '400') + '" opacity=".9">' + rd.label + '</text>';
   });
 
   // "Today" date on ruler
