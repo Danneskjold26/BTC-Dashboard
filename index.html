@@ -585,64 +585,55 @@
         </svg>
       </div>
 
-      <!-- 4 indicator cards -->
+      <!-- 4 indicator contribution cards -->
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:4px;">
 
-        <div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <div style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">Ciclo</div>
-            <div style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 5px;border-radius:3px;">×3</div>
+        <div style="background:var(--bg3);border-radius:10px;padding:14px 16px;border:0.5px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">Ciclo</span>
+            <span style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 6px;border-radius:3px;border:0.5px solid var(--border);">peso ×3</span>
           </div>
-          <!-- mini arc for this indicator -->
-          <svg width="100%" viewBox="0 0 80 44" style="display:block;margin-bottom:6px;">
-            <path d="M8 40 A34 34 0 0 1 72 40" fill="none" stroke="#1e2235" stroke-width="7" stroke-linecap="round"/>
-            <path id="g-cycle-arc" d="" fill="none" stroke="#4fd98a" stroke-width="7" stroke-linecap="round" opacity="0"/>
-            <circle id="g-cycle-dot" cx="40" cy="40" r="4" fill="#5a6080" style="transform-origin:40px 40px;"/>
-          </svg>
-          <div id="g-cycle-val" style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--muted);">—</div>
-          <div id="g-cycle-lbl" style="font-size:10px;color:var(--muted);margin-top:2px;">calculando</div>
+          <div id="g-cycle-val" style="font-family:var(--mono);font-size:22px;font-weight:700;color:var(--muted);line-height:1;margin-bottom:4px;">—</div>
+          <div style="height:3px;background:var(--border);border-radius:2px;margin-bottom:6px;overflow:hidden;">
+            <div id="g-cycle-bar2" style="height:3px;border-radius:2px;width:0%;background:var(--muted);transition:width .6s ease,background .4s;"></div>
+          </div>
+          <div id="g-cycle-lbl" style="font-size:11px;color:var(--muted);line-height:1.4;">calculando</div>
         </div>
 
-        <div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <div style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">MVRV</div>
-            <div style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 5px;border-radius:3px;">×4</div>
+        <div style="background:var(--bg3);border-radius:10px;padding:14px 16px;border:0.5px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">MVRV</span>
+            <span style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 6px;border-radius:3px;border:0.5px solid var(--border);">peso ×4</span>
           </div>
-          <svg width="100%" viewBox="0 0 80 44" style="display:block;margin-bottom:6px;">
-            <path d="M8 40 A34 34 0 0 1 72 40" fill="none" stroke="#1e2235" stroke-width="7" stroke-linecap="round"/>
-            <path id="g-mvrv-arc" d="" fill="none" stroke="#4fd98a" stroke-width="7" stroke-linecap="round" opacity="0"/>
-            <circle id="g-mvrv-dot" cx="40" cy="40" r="4" fill="#5a6080" style="transform-origin:40px 40px;"/>
-          </svg>
-          <div id="g-mvrv-val" style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--muted);">—</div>
-          <div id="g-mvrv-lbl" style="font-size:10px;color:var(--muted);margin-top:2px;">carregando</div>
+          <div id="g-mvrv-val" style="font-family:var(--mono);font-size:22px;font-weight:700;color:var(--muted);line-height:1;margin-bottom:4px;">—</div>
+          <div style="height:3px;background:var(--border);border-radius:2px;margin-bottom:6px;overflow:hidden;">
+            <div id="g-mvrv-bar2" style="height:3px;border-radius:2px;width:0%;background:var(--muted);transition:width .6s ease,background .4s;"></div>
+          </div>
+          <div id="g-mvrv-lbl" style="font-size:11px;color:var(--muted);line-height:1.4;">carregando</div>
         </div>
 
-        <div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <div style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">Funding</div>
-            <div style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 5px;border-radius:3px;">×2</div>
+        <div style="background:var(--bg3);border-radius:10px;padding:14px 16px;border:0.5px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">Funding</span>
+            <span style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 6px;border-radius:3px;border:0.5px solid var(--border);">peso ×2</span>
           </div>
-          <svg width="100%" viewBox="0 0 80 44" style="display:block;margin-bottom:6px;">
-            <path d="M8 40 A34 34 0 0 1 72 40" fill="none" stroke="#1e2235" stroke-width="7" stroke-linecap="round"/>
-            <path id="g-fr-arc" d="" fill="none" stroke="#4fd98a" stroke-width="7" stroke-linecap="round" opacity="0"/>
-            <circle id="g-fr-dot" cx="40" cy="40" r="4" fill="#5a6080" style="transform-origin:40px 40px;"/>
-          </svg>
-          <div id="g-fr-val" style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--muted);">—</div>
-          <div id="g-fr-lbl" style="font-size:10px;color:var(--muted);margin-top:2px;">carregando</div>
+          <div id="g-fr-val" style="font-family:var(--mono);font-size:22px;font-weight:700;color:var(--muted);line-height:1;margin-bottom:4px;">—</div>
+          <div style="height:3px;background:var(--border);border-radius:2px;margin-bottom:6px;overflow:hidden;">
+            <div id="g-fr-bar2" style="height:3px;border-radius:2px;width:0%;background:var(--muted);transition:width .6s ease,background .4s;"></div>
+          </div>
+          <div id="g-fr-lbl" style="font-size:11px;color:var(--muted);line-height:1.4;">carregando</div>
         </div>
 
-        <div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <div style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">OI 24h</div>
-            <div style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 5px;border-radius:3px;">×1</div>
+        <div style="background:var(--bg3);border-radius:10px;padding:14px 16px;border:0.5px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">OI 24h</span>
+            <span style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 6px;border-radius:3px;border:0.5px solid var(--border);">peso ×1</span>
           </div>
-          <svg width="100%" viewBox="0 0 80 44" style="display:block;margin-bottom:6px;">
-            <path d="M8 40 A34 34 0 0 1 72 40" fill="none" stroke="#1e2235" stroke-width="7" stroke-linecap="round"/>
-            <path id="g-oi-arc" d="" fill="none" stroke="#4fd98a" stroke-width="7" stroke-linecap="round" opacity="0"/>
-            <circle id="g-oi-dot" cx="40" cy="40" r="4" fill="#5a6080" style="transform-origin:40px 40px;"/>
-          </svg>
-          <div id="g-oi-val" style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--muted);">—</div>
-          <div id="g-oi-lbl" style="font-size:10px;color:var(--muted);margin-top:2px;">carregando</div>
+          <div id="g-oi-val" style="font-family:var(--mono);font-size:22px;font-weight:700;color:var(--muted);line-height:1;margin-bottom:4px;">—</div>
+          <div style="height:3px;background:var(--border);border-radius:2px;margin-bottom:6px;overflow:hidden;">
+            <div id="g-oi-bar2" style="height:3px;border-radius:2px;width:0%;background:var(--muted);transition:width .6s ease,background .4s;"></div>
+          </div>
+          <div id="g-oi-lbl" style="font-size:11px;color:var(--muted);line-height:1.4;">carregando</div>
         </div>
 
       </div>
@@ -1416,27 +1407,25 @@ function updateGaugeIndicator(id, score, max, valTxt, lblTxt) {
   gScores[id] = score;
   var col = scoreColor(score);
 
-  // mini arc
-  var arcEl = document.getElementById('g-' + id + '-arc');
-  var dotEl = document.getElementById('g-' + id + '-dot');
-  if (arcEl) {
-    var d = miniArcPath(score, max);
-    arcEl.setAttribute('d', d);
-    arcEl.setAttribute('stroke', col);
-    arcEl.setAttribute('opacity', score !== 0 ? '0.85' : '0');
-  }
-  if (dotEl) {
-    var pos = miniDotPos(score, max);
-    dotEl.setAttribute('cx', pos.x);
-    dotEl.setAttribute('cy', pos.y);
-    dotEl.setAttribute('fill', col);
-  }
-
-  // text
+  // score value
   var valEl = document.getElementById('g-' + id + '-val');
   var lblEl = document.getElementById('g-' + id + '-lbl');
-  if (valEl) { valEl.textContent = (score > 0 ? '+' : '') + score + ' pts'; valEl.style.color = col; }
-  if (lblEl) { lblEl.textContent = lblTxt; lblEl.style.color = col; }
+  var barEl = document.getElementById('g-' + id + '-bar2');
+
+  if (valEl) {
+    valEl.textContent = (score > 0 ? '+' : '') + score + ' pts';
+    valEl.style.color = col;
+  }
+  if (lblEl) {
+    lblEl.textContent = lblTxt;
+    lblEl.style.color = col;
+  }
+  if (barEl) {
+    // bar fills proportionally: 0% = neutral, 100% = max contribution
+    var pct = Math.round(Math.abs(score) / max * 100);
+    barEl.style.width = pct + '%';
+    barEl.style.background = col;
+  }
 
   updateGauge();
 }
