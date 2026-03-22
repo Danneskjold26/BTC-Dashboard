@@ -1,1 +1,9 @@
-{"mvrv": 0.817, "date": "2026-03-22", "source": "Kraken VWAP 720d", "updated": "2026-03-22T17:10:53Z", "note": "Estimativa: preco_atual / VWAP_720d. Aprox. \u00b110% do MVRV real."}
+{
+  "mvrv": 1.266,
+  "date": "2026-03-22",
+  "source": "Kraken VWAP 720d (calibrado)",
+  "updated": "2026-03-22T17:16:35Z",
+  "raw_vwap_mvrv": 0.817,
+  "calibration_factor": 1.549,
+  "note": "Calculado: (preco_atual/VWAP_720d) x 1.549. Calibrado em 2026-03-22. Verificar periodicamente em CheckOnChain."
+}
