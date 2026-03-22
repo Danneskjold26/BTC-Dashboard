@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
-Calculates Bitcoin MVRV ratio using CoinGecko historical prices.
-Method: MVRV ≈ current_price / realized_price_estimate
-Realized price estimate = volume-weighted average price over 730 days
-(proxy for the average on-chain cost basis of all circulating BTC)
-Accuracy: within ~10-15% of true MVRV — sufficient for zone detection.
+Calculates Bitcoin MVRV using Binance historical klines.
+MVRV = current_price / VWAP_730d
+Binance API: free, no auth, works from GitHub Actions.
 """
 
-import json, os, urllib.request, time
+import json, os, urllib.request
 from datetime import datetime, timezone
 
 TODAY   = datetime.now(timezone.utc).strftime('%Y-%m-%d')
@@ -15,13 +13,11 @@ UPDATED = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 OUTFILE = 'data/mvrv.json'
 os.makedirs('data', exist_ok=True)
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
-    'Accept': 'application/json',
-}
-
 def get(url, timeout=30):
-    req = urllib.request.Request(url, headers=HEADERS)
+    req = urllib.request.Request(url, headers={
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': 'application/json',
+    })
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
@@ -40,65 +36,55 @@ def save(mvrv, source, note=None):
         json.dump(p, f)
     print(f'SAVED: mvrv={p["mvrv"]} source={source}')
 
-
-# ── Method: CoinGecko 730-day price history ───────────────────────────────
-# Realized price ≈ average of all daily closes over 2 years
-# This approximates what the average holder paid across all UTXOs
-print('Fetching 730 days of BTC price history from CoinGecko...')
+# ── Binance klines: 730 daily candles ────────────────────────────────────
+# Each kline: [open_time, open, high, low, close, volume, ...]
+# VWAP = sum(typical_price * volume) / sum(volume)
+# typical_price = (high + low + close) / 3
+print('Fetching 730-day klines from Binance...')
 try:
-    # Get current price + market data
-    current = get('https://api.coingecko.com/api/v3/simple/price'
-                  '?ids=bitcoin&vs_currencies=usd&include_market_cap=false')
-    current_price = float(current['bitcoin']['usd'])
-    print(f'  Current price: ${current_price:,.0f}')
+    klines = get('https://api.binance.com/api/v3/klines'
+                 '?symbol=BTCUSDT&interval=1d&limit=730')
 
-    # Rate limit: wait 1.5s between CoinGecko calls (free tier = 30 req/min)
-    time.sleep(1.5)
+    if len(klines) < 100:
+        raise Exception(f'Too few candles: {len(klines)}')
 
-    # Get 730 days of daily OHLC prices
-    hist = get('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart'
-               '?vs_currency=usd&days=730&interval=daily')
+    print(f'  Got {len(klines)} daily candles')
 
-    prices = [p[1] for p in hist.get('prices', []) if p[1] > 0]
-    volumes = [v[1] for v in hist.get('total_volumes', []) if v[1] > 0]
+    total_vol   = 0.0
+    total_tpvol = 0.0
 
-    if len(prices) < 100:
-        raise Exception(f'Too few data points: {len(prices)}')
+    for k in klines:
+        high   = float(k[2])
+        low    = float(k[3])
+        close  = float(k[4])
+        volume = float(k[5])   # base asset volume (BTC)
+        tp     = (high + low + close) / 3.0
+        total_tpvol += tp * volume
+        total_vol   += volume
 
-    print(f'  Got {len(prices)} daily price points')
+    if total_vol <= 0:
+        raise Exception('Zero total volume')
 
-    # Volume-weighted average price (VWAP) as realized price proxy
-    # More recent prices weighted higher (recent UTXOs dominate)
-    if len(volumes) == len(prices):
-        total_vol = sum(volumes)
-        if total_vol > 0:
-            vwap = sum(p * v for p, v in zip(prices, volumes)) / total_vol
-            method = 'VWAP 730d'
-        else:
-            vwap = sum(prices) / len(prices)
-            method = 'SMA 730d'
-    else:
-        vwap = sum(prices) / len(prices)
-        method = 'SMA 730d'
+    vwap          = total_tpvol / total_vol
+    current_price = float(klines[-1][4])   # last close
+    mvrv          = current_price / vwap
 
-    print(f'  Realized price estimate ({method}): ${vwap:,.0f}')
+    print(f'  Current price : ${current_price:,.0f}')
+    print(f'  VWAP 730d     : ${vwap:,.0f}')
+    print(f'  MVRV estimate : {mvrv:.3f}')
 
-    mvrv = current_price / vwap
-    print(f'  MVRV = {current_price:,.0f} / {vwap:,.0f} = {mvrv:.3f}')
+    if not valid(mvrv):
+        raise Exception(f'Value out of range: {mvrv}')
 
-    if valid(mvrv):
-        save(mvrv, f'CoinGecko ({method})',
-             note='Calculado: preço atual / VWAP 730 dias. Aproximado, ±10-15% do MVRV real.')
-        exit(0)
-    else:
-        raise Exception(f'MVRV out of valid range: {mvrv}')
+    save(mvrv, 'Binance VWAP 730d',
+         note='Estimativa: preco_atual / VWAP_730d. Aprox. ±10% do MVRV real.')
+    exit(0)
 
 except Exception as e:
-    print(f'  CoinGecko method failed: {e}')
-
+    print(f'  Binance failed: {e}')
 
 # ── Keep previous value ───────────────────────────────────────────────────
-print('CoinGecko failed. Checking previous value...')
+print('Binance failed. Checking previous value...')
 if os.path.exists(OUTFILE):
     try:
         prev = json.load(open(OUTFILE))
@@ -112,6 +98,7 @@ if os.path.exists(OUTFILE):
         print(f'  Could not read previous: {e}')
 
 print('No valid data — writing null')
-json.dump({'mvrv': None, 'date': TODAY, 'source': 'unavailable', 'updated': UPDATED},
+json.dump({'mvrv': None, 'date': TODAY,
+           'source': 'unavailable', 'updated': UPDATED},
           open(OUTFILE, 'w'))
 exit(1)
