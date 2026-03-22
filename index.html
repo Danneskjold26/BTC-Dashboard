@@ -1526,61 +1526,127 @@ function renderCyclePosition() {
 
   // ── SVG timeline ────────────────────────────────────────
   html += '<div style="margin-bottom:22px;overflow:hidden;">';
-  html += '<svg width="100%" viewBox="0 0 ' + (W+40) + ' ' + (H+10) + '" style="display:block;">';
 
-  var ox = 20; // left offset
+  // ── Date ruler: compute real dates for key milestones ──────────────────
+  function msToLabel(d) {
+    return d.toLocaleDateString('pt-BR', {month:'short', year:'2-digit'});
+  }
 
-  // Background track
-  html += '<rect x="' + ox + '" y="32" width="' + W + '" height="20" rx="10" fill="' + bgTrack + '"/>';
+  // Key anchor dates
+  var dFundo     = new Date('2022-11-21');
+  var dHalving   = new Date('2024-04-19');   // BTC halving
+  var dTopMin    = addDays(dFundo, BULL_MIN); // Oct 2025
+  var dTopMid    = addDays(dFundo, BULL_MID);
+  var dTopMax    = addDays(dFundo, BULL_MAX);
+  var dBearMin   = addDays(dTopMid, BEAR_MIN);
+  var dBearMax   = addDays(dTopMid, BEAR_MAX);
 
-  // Bull zone fill (green, full bull range)
-  html += '<rect x="' + (ox+xFundo) + '" y="32" width="' + xTopMax + '" height="20" rx="10" fill="' + bullCol + '" opacity=".35"/>';
+  // Compute X for any date on the timeline
+  function xDate(d) {
+    var days = Math.floor((d - dFundo) / msDay);
+    return ox + xOf(Math.max(0, Math.min(days, TOTAL)));
+  }
 
-  // Bear zone fill (red, full bear range after top)
-  html += '<rect x="' + (ox+xTopMax) + '" y="32" width="' + (xEnd-xTopMax) + '" height="20" rx="0" fill="' + bearCol + '" opacity=".3"/>';
-  // round right end
-  html += '<rect x="' + (ox+xEnd-10) + '" y="32" width="10" height="20" rx="0" fill="' + bearCol + '" opacity=".3"/>';
+  // SVG height: extra 32px on top for date ruler
+  var svgH = H + 42;
+  var trackY = 54;   // push track down to make room for ruler
 
-  // Topo zone highlight (bright green band)
-  html += '<rect x="' + (ox+xTopMin) + '" y="28" width="' + (xTopMax-xTopMin) + '" height="28" rx="4" fill="#4fd98a" opacity=".18"/>';
-  html += '<rect x="' + (ox+xTopMin) + '" y="28" width="' + (xTopMax-xTopMin) + '" height="28" rx="4" fill="none" stroke="#4fd98a" stroke-width="0.5" opacity=".5"/>';
+  html += '<svg width="100%" viewBox="0 0 ' + (W+40) + ' ' + svgH + '" style="display:block;">';
 
-  // Fundo zone highlight (bright red band)
-  html += '<rect x="' + (ox+xFundoMin2) + '" y="28" width="' + (xFundoMax2-xFundoMin2) + '" height="28" rx="4" fill="#f07070" opacity=".12"/>';
-  html += '<rect x="' + (ox+xFundoMin2) + '" y="28" width="' + (xFundoMax2-xFundoMin2) + '" height="28" rx="4" fill="none" stroke="#f07070" stroke-width="0.5" opacity=".4"/>';
+  var ox = 20;
 
-  // Current position marker (tall line + dot)
-  html += '<line x1="' + (ox+curX) + '" y1="16" x2="' + (ox+curX) + '" y2="68" stroke="' + curCol + '" stroke-width="2" stroke-linecap="round"/>';
-  html += '<circle cx="' + (ox+curX) + '" cy="42" r="6" fill="' + curCol + '"/>';
-  html += '<circle cx="' + (ox+curX) + '" cy="42" r="10" fill="' + curCol + '" opacity=".2"/>';
+  // ── Date ruler ticks and labels ──────────────────────────────────────
+  // Define key dates to label
+  var ruleDates = [
+    { d: dFundo,   label: 'Nov 22',   col: '#5a6080',  bold: false },
+    { d: new Date('2023-06-01'), label: 'Jun 23', col: '#3a4060', bold: false },
+    { d: dHalving, label: 'Halving
+Abr 24', col: '#f0a840', bold: true  },
+    { d: new Date('2025-01-01'), label: 'Jan 25', col: '#3a4060', bold: false },
+    { d: dTopMin,  label: 'Out 25',   col: '#4fd98a',  bold: true  },
+    { d: dTopMax,  label: 'Nov 25',   col: '#4fd98a',  bold: false },
+    { d: new Date('2026-04-01'), label: 'Abr 26', col: '#3a4060', bold: false },
+    { d: dBearMin, label: 'Set 26',   col: '#f07070',  bold: true  },
+    { d: dBearMax, label: 'Nov 26',   col: '#f07070',  bold: false },
+  ];
 
-  // "Hoje" label above current marker
-  html += '<text x="' + (ox+curX) + '" y="11" text-anchor="middle" font-size="9" fill="' + curCol + '" font-family="monospace" font-weight="600">HOJE</text>';
+  // Ruler baseline
+  html += '<line x1="' + ox + '" y1="22" x2="' + (ox+W) + '" y2="22" stroke="#1e2235" stroke-width="0.5"/>';
 
-  // Axis tick labels below track
-  // Fundo label
-  html += '<text x="' + (ox+xFundo) + '" y="66" text-anchor="middle" font-size="8.5" fill="#5a6080" font-family="monospace">Fundo</text>';
-  html += '<text x="' + (ox+xFundo) + '" y="75" text-anchor="middle" font-size="8" fill="#3a4060" font-family="monospace">Nov 2022</text>';
+  ruleDates.forEach(function(rd) {
+    var rx = xDate(rd.d);
+    if (rx < ox || rx > ox + W) return;
+    // tick
+    html += '<line x1="' + rx + '" y1="18" x2="' + rx + '" y2="26" stroke="' + rd.col + '" stroke-width="' + (rd.bold ? '1.5' : '0.8') + '" opacity=".7"/>';
+    // label (split on 
+ for two-line labels)
+    var parts = rd.label.split('\n');
+    if (parts.length === 2) {
+      html += '<text x="' + rx + '" y="10" text-anchor="middle" font-size="7.5" fill="' + rd.col + '" font-family="monospace" font-weight="' + (rd.bold ? '600' : '400') + '" opacity=".9">' + parts[0] + '</text>';
+      html += '<text x="' + rx + '" y="18" text-anchor="middle" font-size="7" fill="' + rd.col + '" font-family="monospace" opacity=".8">' + parts[1] + '</text>';
+    } else {
+      html += '<text x="' + rx + '" y="13" text-anchor="middle" font-size="7.5" fill="' + rd.col + '" font-family="monospace" font-weight="' + (rd.bold ? '600' : '400') + '" opacity=".9">' + rd.label + '</text>';
+    }
+  });
 
-  // Top zone label
+  // "Today" date on ruler
+  var todayX = ox + curX;
+  html += '<line x1="' + todayX + '" y1="16" x2="' + todayX + '" y2="26" stroke="' + curCol + '" stroke-width="2" opacity=".9"/>';
+  html += '<text x="' + todayX + '" y="8" text-anchor="middle" font-size="7" fill="' + curCol + '" font-family="monospace" font-weight="600">' + today.toLocaleDateString('pt-BR', {day:'2-digit', month:'short', year:'2-digit'}) + '</text>';
+
+  // ── Background track (shifted down) ──────────────────────────────────
+  html += '<rect x="' + ox + '" y="' + trackY + '" width="' + W + '" height="20" rx="10" fill="' + bgTrack + '"/>';
+
+  // Bull zone fill
+  html += '<rect x="' + (ox+xFundo) + '" y="' + trackY + '" width="' + xTopMax + '" height="20" rx="10" fill="' + bullCol + '" opacity=".35"/>';
+
+  // Bear zone fill
+  html += '<rect x="' + (ox+xTopMax) + '" y="' + trackY + '" width="' + (xEnd-xTopMax) + '" height="20" rx="0" fill="' + bearCol + '" opacity=".3"/>';
+  html += '<rect x="' + (ox+xEnd-10) + '" y="' + trackY + '" width="10" height="20" rx="0" fill="' + bearCol + '" opacity=".3"/>';
+
+  // Topo zone highlight
+  html += '<rect x="' + (ox+xTopMin) + '" y="' + (trackY-4) + '" width="' + (xTopMax-xTopMin) + '" height="28" rx="4" fill="#4fd98a" opacity=".18"/>';
+  html += '<rect x="' + (ox+xTopMin) + '" y="' + (trackY-4) + '" width="' + (xTopMax-xTopMin) + '" height="28" rx="4" fill="none" stroke="#4fd98a" stroke-width="0.5" opacity=".5"/>';
+
+  // Fundo zone 2 highlight
+  html += '<rect x="' + (ox+xFundoMin2) + '" y="' + (trackY-4) + '" width="' + (xFundoMax2-xFundoMin2) + '" height="28" rx="4" fill="#f07070" opacity=".12"/>';
+  html += '<rect x="' + (ox+xFundoMin2) + '" y="' + (trackY-4) + '" width="' + (xFundoMax2-xFundoMin2) + '" height="28" rx="4" fill="none" stroke="#f07070" stroke-width="0.5" opacity=".4"/>';
+
+  // Current position marker
+  html += '<line x1="' + (ox+curX) + '" y1="' + (trackY-6) + '" x2="' + (ox+curX) + '" y2="' + (trackY+26) + '" stroke="' + curCol + '" stroke-width="2" stroke-linecap="round"/>';
+  html += '<circle cx="' + (ox+curX) + '" cy="' + (trackY+10) + '" r="6" fill="' + curCol + '"/>';
+  html += '<circle cx="' + (ox+curX) + '" cy="' + (trackY+10) + '" r="10" fill="' + curCol + '" opacity=".2"/>';
+
+  // HOJE label above marker
+  html += '<text x="' + (ox+curX) + '" y="' + (trackY-10) + '" text-anchor="middle" font-size="8" fill="' + curCol + '" font-family="monospace" font-weight="600">HOJE</text>';
+
+  // ── Labels below track ───────────────────────────────────────────────
+  var labelY1 = trackY + 34;
+  var labelY2 = trackY + 43;
+
+  // Fundo
+  html += '<text x="' + (ox+xFundo) + '" y="' + labelY1 + '" text-anchor="middle" font-size="8.5" fill="#5a6080" font-family="monospace">Fundo</text>';
+  html += '<text x="' + (ox+xFundo) + '" y="' + labelY2 + '" text-anchor="middle" font-size="8" fill="#3a4060" font-family="monospace">Nov 2022</text>';
+
+  // Top zone
   var xTopLabelX = ox + xTopMin + Math.round((xTopMax-xTopMin)/2);
-  html += '<text x="' + xTopLabelX + '" y="66" text-anchor="middle" font-size="8.5" fill="#4fd98a" font-family="monospace" opacity=".8">zona topo</text>';
-  html += '<text x="' + xTopLabelX + '" y="75" text-anchor="middle" font-size="7.5" fill="#4fd98a" font-family="monospace" opacity=".6">' + BULL_MIN + '–' + BULL_MAX + 'd</text>';
+  html += '<text x="' + xTopLabelX + '" y="' + labelY1 + '" text-anchor="middle" font-size="8.5" fill="#4fd98a" font-family="monospace" opacity=".8">zona topo</text>';
+  html += '<text x="' + xTopLabelX + '" y="' + labelY2 + '" text-anchor="middle" font-size="7.5" fill="#4fd98a" font-family="monospace" opacity=".6">' + dTopMin.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}) + '–' + dTopMax.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}) + '</text>';
 
-  // Fundo zone 2 label
+  // Fundo zone 2
   var xFundoLabelX = ox + xFundoMin2 + Math.round((xFundoMax2-xFundoMin2)/2);
-  html += '<text x="' + xFundoLabelX + '" y="66" text-anchor="middle" font-size="8.5" fill="#f07070" font-family="monospace" opacity=".8">zona fundo</text>';
-  html += '<text x="' + xFundoLabelX + '" y="75" text-anchor="middle" font-size="7.5" fill="#f07070" font-family="monospace" opacity=".6">' + (BULL_MID+BEAR_MIN) + '–' + (BULL_MID+BEAR_MAX) + 'd</text>';
+  html += '<text x="' + xFundoLabelX + '" y="' + labelY1 + '" text-anchor="middle" font-size="8.5" fill="#f07070" font-family="monospace" opacity=".8">zona fundo</text>';
+  html += '<text x="' + xFundoLabelX + '" y="' + labelY2 + '" text-anchor="middle" font-size="7.5" fill="#f07070" font-family="monospace" opacity=".6">' + dBearMin.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}) + '–' + dBearMax.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}) + '</text>';
 
-  // Phase arc labels on track
+  // Phase labels on track
   var xBullMid = ox + Math.round(xTopMax / 2);
-  html += '<text x="' + xBullMid + '" y="45" text-anchor="middle" font-size="8" fill="#4fd98a" font-family="monospace" opacity=".7">bull market ' + BULL_MAX + 'd</text>';
+  html += '<text x="' + xBullMid + '" y="' + (trackY+13) + '" text-anchor="middle" font-size="8" fill="#4fd98a" font-family="monospace" opacity=".7">bull market ' + BULL_MAX + 'd</text>';
 
   var xBearMid = ox + xTopMax + Math.round((xEnd - xTopMax) / 2);
-  html += '<text x="' + xBearMid + '" y="45" text-anchor="middle" font-size="8" fill="#f09595" font-family="monospace" opacity=".7">bear ' + BEAR_MAX + 'd</text>';
+  html += '<text x="' + xBearMid + '" y="' + (trackY+13) + '" text-anchor="middle" font-size="8" fill="#f09595" font-family="monospace" opacity=".7">bear ' + BEAR_MAX + 'd</text>';
 
-  // Current day tick label above marker (if room)
-  html += '<text x="' + (ox+curX) + '" y="90" text-anchor="middle" font-size="8" fill="' + curCol + '" font-family="monospace" opacity=".9">dia ' + (isBull ? daysSinceFundo : daysSinceFundo) + '</text>';
+  // Current day number below marker
+  html += '<text x="' + (ox+curX) + '" y="' + (trackY+56) + '" text-anchor="middle" font-size="8" fill="' + curCol + '" font-family="monospace" opacity=".9">dia ' + daysSinceFundo + '</text>';
 
   html += '</svg>';
   html += '</div>';
