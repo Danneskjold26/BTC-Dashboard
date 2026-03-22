@@ -1183,57 +1183,63 @@ function classifyOI(chg24h, chg1h, priceChg24h) {
 }
 
 async function fetchOI(btcPrice) {
-  // CoinGlass aggregates OI across all major exchanges.
-  // We fetch Binance + Bybit + OKX historical data (25 x 1h candles each)
-  // and sum them to get market-wide OI, matching CoinGlass methodology.
+  // Fetches OI from Binance + Bybit only.
+  // OKX removed: CORS blocks browser calls AND its contract size (0.01 BTC)
+  // was being calculated incorrectly, inverting the signal.
+  // Binance + Bybit represent ~65% of total BTC perp OI — sufficient for signal.
+  //
+  // Each exchange: fetch 26 x 1h candles → index[0]=oldest(25h ago), index[25]=newest
+  // 24h change = (newest - candle_at_index_1) / candle_at_index_1
+  // (index 1 = 24h before the most recent candle, index 0 = 25h ago as buffer)
 
-  var oiNow  = 0;
-  var oi24h  = 0;
-  var oi1h   = 0;
+  var oiNow  = 0;  // current OI (sum across exchanges, in USD)
+  var oi24h  = 0;  // OI exactly 24h ago
+  var oi1h   = 0;  // OI 1h ago
   var sources = [];
 
-  // 1. Binance — official futures data endpoint
+  // ── Binance ─────────────────────────────────────────────────────────
+  // sumOpenInterest is in BTC → multiply by current price for USD
+  // limit=26: index[25]=newest, index[1]=24h ago, index[0]=25h ago (buffer)
   try {
-    var r1 = await fetch('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=25');
+    var r1 = await fetch('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=26');
     var j1 = await r1.json();
-    if (j1 && j1.length >= 25) {
-      oiNow += parseFloat(j1[j1.length-1].sumOpenInterest) * btcPrice;
-      oi1h  += parseFloat(j1[j1.length-2].sumOpenInterest) * btcPrice;
-      oi24h += parseFloat(j1[0].sumOpenInterest)           * btcPrice;
+    if (j1 && j1.length >= 26) {
+      var bNow  = parseFloat(j1[j1.length-1].sumOpenInterest) * btcPrice;
+      var b1h   = parseFloat(j1[j1.length-2].sumOpenInterest) * btcPrice;
+      var b24h  = parseFloat(j1[1].sumOpenInterest)           * btcPrice;  // index 1 = 24h ago
+      oiNow += bNow;
+      oi1h  += b1h;
+      oi24h += b24h;
       sources.push('Binance');
+      console.log('Binance OI now:', fmtUSD(bNow), '24h ago:', fmtUSD(b24h),
+                  'chg:', ((bNow-b24h)/b24h*100).toFixed(2)+'%');
     }
   } catch(e) { console.warn('OI Binance failed', e); }
 
-  // 2. Bybit — linear (USDT) perp
+  // ── Bybit ────────────────────────────────────────────────────────────
+  // openInterest is in BTC (linear) → multiply by price for USD
+  // Returns newest-first: list[0]=newest, list[24]=oldest (25h ago with limit=26)
+  // list[1] = 24h ago (one step before newest)... wait, newest-first means:
+  // list[0]=now, list[1]=1h ago, list[24]=24h ago (with limit=25)
+  // Use limit=25: list[0]=newest, list[1]=1h ago, list[24]=24h ago ✓
   try {
     var r2 = await fetch('https://api.bybit.com/v5/market/open-interest?category=linear&symbol=BTCUSDT&intervalTime=1h&limit=25');
     var j2 = await r2.json();
     var list2 = j2.result && j2.result.list;
     if (list2 && list2.length >= 25) {
-      // Bybit returns newest first
-      oiNow += parseFloat(list2[0].openInterest)            * btcPrice;
-      oi1h  += parseFloat(list2[1].openInterest)            * btcPrice;
-      oi24h += parseFloat(list2[list2.length-1].openInterest) * btcPrice;
+      var bbNow  = parseFloat(list2[0].openInterest)             * btcPrice;
+      var bb1h   = parseFloat(list2[1].openInterest)             * btcPrice;
+      var bb24h  = parseFloat(list2[list2.length-1].openInterest)* btcPrice;
+      oiNow += bbNow;
+      oi1h  += bb1h;
+      oi24h += bb24h;
       sources.push('Bybit');
+      console.log('Bybit OI now:', fmtUSD(bbNow), '24h ago:', fmtUSD(bb24h),
+                  'chg:', ((bbNow-bb24h)/bb24h*100).toFixed(2)+'%');
     }
   } catch(e) { console.warn('OI Bybit failed', e); }
 
-  // 3. OKX — USDT perpetual swap
-  try {
-    var r3 = await fetch('https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-history?instId=BTC-USDT-SWAP&period=1H&limit=25');
-    var j3 = await r3.json();
-    var list3 = j3.data;
-    if (list3 && list3.length >= 25) {
-      // OKX returns newest first, values in contracts (1 contract = 100 USD)
-      var mult = 100;
-      oiNow += parseFloat(list3[0][1])              * mult;
-      oi1h  += parseFloat(list3[1][1])              * mult;
-      oi24h += parseFloat(list3[list3.length-1][1]) * mult;
-      sources.push('OKX');
-    }
-  } catch(e) { console.warn('OI OKX failed', e); }
-
-  if (oiNow === 0) {
+  if (oiNow === 0 || oi24h === 0) {
     setEl('oi-arrow', '<span style="color:var(--sell-text);font-size:28px;">!</span>');
     setEl('oi-pct', '');
     setTxt('oi-signal', 'Falha nas APIs');
@@ -1242,6 +1248,7 @@ async function fetchOI(btcPrice) {
 
   var chg24h = ((oiNow - oi24h) / oi24h) * 100;
   var chg1h  = ((oiNow - oi1h)  / oi1h)  * 100;
+  console.log('Total OI chg24h:', chg24h.toFixed(2)+'%', 'chg1h:', chg1h.toFixed(2)+'%');
 
   // 24h price change from Binance futures ticker
   var priceChg24h = 0;
@@ -1265,15 +1272,16 @@ async function fetchOI(btcPrice) {
   var sign1h = chg1h >= 0 ? '+' : '';
   var prSign = priceChg24h >= 0 ? '+' : '';
   setTxt('oi-abs', fmtUSD(oiNow) + ' em aberto · 1h: ' + sign1h + chg1h.toFixed(2) + '%');
-  setTxt('oi-sub', 'BTC 24h: ' + prSign + priceChg24h.toFixed(2) + '% · Fonte: ' + sources.join(' + '));
+  setTxt('oi-sub', 'BTC 24h: ' + prSign + priceChg24h.toFixed(2) + '% · ' + sources.join(' + '));
 
   document.getElementById('oi-pill').className = 'signal-pill pill-' + c.cls;
   document.getElementById('oi-dot').className = 'signal-dot dot-' + c.cls;
   setTxt('oi-signal', c.label);
   highlightLegend('oi', c.legend);
-  // gauge score: acc(alta saudável)=+1, sell(baixa)=-2, dist(short squeeze)=0, buy(long squeeze/fundo)=+2, neu=0
   var oiScore = c.cls==='acc'?+1:c.cls==='sell'?-1:c.cls==='dist'?0:c.cls==='buy'?+1:0;
-  updateGaugeIndicator('oi', oiScore, 1, sign24+chg24h.toFixed(2)+'%', c.cls==='acc'?'alta saudável':c.cls==='sell'?'baixa forte':c.cls==='dist'?'short squeeze':c.cls==='buy'?'long squeeze':'estável');
+  updateGaugeIndicator('oi', oiScore, 1, sign24+chg24h.toFixed(2)+'%',
+    c.cls==='acc'?'alta saudável':c.cls==='sell'?'baixa forte':
+    c.cls==='dist'?'short squeeze':c.cls==='buy'?'long squeeze':'estável');
 
   prevOI = oiNow;
 }
