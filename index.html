@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTC Dashboard — MVRV · Funding Rate · Open Interest</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #07090f;
+    --bg2: #0c0f1a;
+    --bg3: #111521;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e8eaf0;
+    --muted: #5a6080;
+    --muted2: #8090b0;
+    --orange: #f7931a;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+
+    --buy:    #1a7a4a;
+    --buy-bg: #071a10;
+    --buy-border: #1d5e39;
+    --buy-text: #4fd98a;
+
+    --acc:    #1a4a7a;
+    --acc-bg: #071020;
+    --acc-border: #1d3d5e;
+    --acc-text: #5aabf0;
+
+    --neu-bg: #0e1220;
+    --neu-border: rgba(255,255,255,0.1);
+    --neu-text: #8090c0;
+
+    --dist-bg: #2a1800;
+    --dist-border: #5e3d00;
+    --dist-text: #f0a840;
+
+    --sell-bg: #200808;
+    --sell-border: #5e1a1a;
+    --sell-text: #f07070;
+  }
+
+  html { font-size: 16px; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    padding: 0 0 60px;
+  }
+
+  /* ── HEADER ─────────────────────────────── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .btc-icon {
+    width: 32px;
+    height: 32px;
+    background: var(--orange);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 15px;
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .logo-text {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text);
+  }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-top: 1px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+
+  .btc-price-block {
+    text-align: right;
+  }
+
+  .btc-price-label {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+
+  .btc-price-val {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--orange);
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #2ecc71;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .last-update {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  /* ── MAIN LAYOUT ─────────────────────────── */
+  main {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 40px 40px 0;
+  }
+
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .section-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 40px;
+  }
+
+  @media (max-width: 900px) {
+    .cards-grid { grid-template-columns: 1fr; }
+    header { padding: 14px 20px; }
+    main { padding: 24px 20px 0; }
+    .header-right { gap: 16px; }
+  }
+
+  /* ── METRIC CARD ─────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    transition: border-color 0.3s;
+  }
+
+  .card:hover {
+    border-color: var(--border2);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+
+  .metric-name {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted2);
+  }
+
+  .source-badge {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--muted);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 7px;
+  }
+
+  .metric-value {
+    font-family: var(--mono);
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 6px;
+    transition: color 0.4s;
+    letter-spacing: -0.02em;
+  }
+
+  .metric-sub {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-bottom: 20px;
+    min-height: 18px;
+  }
+
+  /* Signal pill */
+  .signal-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 22px;
+    transition: all 0.4s;
+  }
+
+  .signal-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  /* ── LEGEND ──────────────────────────────── */
+  .legend {
+    border-top: 1px solid var(--border);
+    padding-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .legend-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+  }
+
+  .legend-row.active {
+    border-color: var(--border2) !important;
+  }
+
+  .legend-bar {
+    width: 3px;
+    height: 28px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .legend-range {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 100px;
+    flex-shrink: 0;
+  }
+
+  .legend-desc {
+    font-size: 11px;
+    color: var(--muted2);
+    line-height: 1.4;
+    flex: 1;
+  }
+
+  .legend-signal {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Signal color classes */
+  .s-buy    { background:var(--buy-bg);   border-color:var(--buy-border)!important;  color:var(--buy-text); }
+  .s-acc    { background:var(--acc-bg);   border-color:var(--acc-border)!important;  color:var(--acc-text); }
+  .s-neu    { background:var(--neu-bg);   border-color:var(--neu-border)!important;  color:var(--neu-text); }
+  .s-dist   { background:var(--dist-bg);  border-color:var(--dist-border)!important; color:var(--dist-text);}
+  .s-sell   { background:var(--sell-bg);  border-color:var(--sell-border)!important; color:var(--sell-text);}
+
+  .bar-buy  { background: var(--buy-text); }
+  .bar-acc  { background: var(--acc-text); }
+  .bar-neu  { background: var(--neu-text); }
+  .bar-dist { background: var(--dist-text); }
+  .bar-sell { background: var(--sell-text); }
+
+  .pill-buy  { background:var(--buy-bg);  color:var(--buy-text);  border:1px solid var(--buy-border); }
+  .pill-acc  { background:var(--acc-bg);  color:var(--acc-text);  border:1px solid var(--acc-border); }
+  .pill-neu  { background:var(--neu-bg);  color:var(--neu-text);  border:1px solid var(--neu-border); }
+  .pill-dist { background:var(--dist-bg); color:var(--dist-text); border:1px solid var(--dist-border);}
+  .pill-sell { background:var(--sell-bg); color:var(--sell-text); border:1px solid var(--sell-border);}
+
+  .dot-buy  { background: var(--buy-text); }
+  .dot-acc  { background: var(--acc-text); }
+  .dot-neu  { background: var(--neu-text); }
+  .dot-dist { background: var(--dist-text); }
+  .dot-sell { background: var(--sell-text); }
+
+  /* ── COMBO SECTION ───────────────────────── */
+  .combo-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+    margin-bottom: 40px;
+  }
+
+  @media (max-width: 700px) {
+    .combo-grid { grid-template-columns: 1fr; }
+  }
+
+  .combo-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+
+  .combo-label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .combo-desc {
+    font-size: 12px;
+    color: var(--muted2);
+    line-height: 1.55;
+    margin-bottom: 10px;
+  }
+
+  .combo-tag {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 5px;
+    display: inline-block;
+  }
+
+  /* ── RULES SECTION ───────────────────────── */
+  .rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 40px;
+  }
+
+  .rule-item {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    font-size: 13px;
+    color: var(--muted2);
+    line-height: 1.5;
+  }
+
+  .rule-arrow {
+    font-family: var(--mono);
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .rule-item b { color: var(--text); }
+
+  /* ── FOOTER ──────────────────────────────── */
+  footer {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 40px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  @media (max-width: 900px) {
+    footer { padding: 0 20px; }
+  }
+
+  /* ── LOADING STATE ───────────────────────── */
+  .loading {
+    font-family: var(--mono);
+    font-size: 28px;
+    color: var(--muted);
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+
+  .error-text {
+    font-size: 13px;
+    color: var(--sell-text);
+    font-family: var(--mono);
+  }
+
+  /* refresh btn */
+  .refresh-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 7px;
+    color: var(--muted2);
+    font-family: var(--sans);
+    font-size: 12px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .refresh-btn:hover {
+    background: var(--bg2);
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="btc-icon">₿</div>
+    <div>
+      <div class="logo-text">BTC Dashboard</div>
+      <div class="logo-sub">On-chain &amp; Derivativos</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="btc-price-block">
+      <div class="btc-price-label">BTC / USDT</div>
+      <div class="btc-price-val" id="btc-price">—</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;">
+      <div style="display:flex;align-items:center;gap:7px;">
+        <div class="status-dot" id="status-dot"></div>
+        <span class="last-update" id="last-update">atualizando...</span>
+      </div>
+      <button class="refresh-btn" onclick="fetchAll()">↻ Atualizar</button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── COMPOSITE GAUGE ── -->
+  <div id="gauge-section" style="margin-bottom:40px;">
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:18px;">
+      <span style="font-size:11px;font-weight:500;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);">Sinal composto — 4 indicadores</span>
+      <div style="flex:1;height:1px;background:var(--border);"></div>
+    </div>
+
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;">
+
+      <!-- Top row: label + score -->
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;">
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">avaliação geral</div>
+          <div id="gauge-label" style="font-size:26px;font-weight:500;color:var(--muted);">Calculando...</div>
+          <div id="gauge-sub" style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.5;">aguardando métricas</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0;margin-left:20px;">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px;">pontuação</div>
+          <div id="gauge-score-val" style="font-family:var(--mono);font-size:42px;font-weight:700;color:var(--muted);line-height:1;">—</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">de −10 (compra) a +10 (venda)</div>
+        </div>
+      </div>
+
+      <!-- SVG arc gauge -->
+      <div style="display:flex;justify-content:center;margin-bottom:8px;">
+        <svg id="gauge-svg" width="100%" viewBox="0 0 400 220" style="max-width:480px;display:block;">
+          <!-- zone arcs (half circle, r=140, cx=200 cy=200) -->
+          <!-- strong buy -->
+          <path d="M 60 200 A 140 140 0 0 1 101.7 109.8" fill="none" stroke="#071a10" stroke-width="28" stroke-linecap="butt"/>
+          <!-- buy -->
+          <path d="M 101.7 109.8 A 140 140 0 0 1 157.9 66.4" fill="none" stroke="#0b2a18" stroke-width="28" stroke-linecap="butt"/>
+          <!-- neutral -->
+          <path d="M 157.9 66.4 A 140 140 0 0 1 242.1 66.4" fill="none" stroke="#111521" stroke-width="28" stroke-linecap="butt"/>
+          <!-- dist -->
+          <path d="M 242.1 66.4 A 140 140 0 0 1 298.3 109.8" fill="none" stroke="#200d00" stroke-width="28" stroke-linecap="butt"/>
+          <!-- sell -->
+          <path d="M 298.3 109.8 A 140 140 0 0 1 340 200" fill="none" stroke="#200808" stroke-width="28" stroke-linecap="butt"/>
+
+          <!-- outer ring (thin border) -->
+          <path d="M 56 200 A 144 144 0 0 1 344 200" fill="none" stroke="#1e2235" stroke-width="1"/>
+          <path d="M 64 200 A 136 136 0 0 1 336 200" fill="none" stroke="#1e2235" stroke-width="1"/>
+
+          <!-- zone tick marks -->
+          <line x1="60" y1="200" x2="52" y2="200" stroke="#1e2235" stroke-width="1.5"/>
+          <line x1="101.7" y1="109.8" x2="95.4" y2="104.3" stroke="#1e2235" stroke-width="1.5"/>
+          <line x1="157.9" y1="66.4" x2="153.4" y2="58.5" stroke="#1e2235" stroke-width="1.5"/>
+          <line x1="200" y1="60" x2="200" y2="52" stroke="#1e2235" stroke-width="1.5"/>
+          <line x1="242.1" y1="66.4" x2="246.6" y2="58.5" stroke="#1e2235" stroke-width="1.5"/>
+          <line x1="298.3" y1="109.8" x2="304.6" y2="104.3" stroke="#1e2235" stroke-width="1.5"/>
+          <line x1="340" y1="200" x2="348" y2="200" stroke="#1e2235" stroke-width="1.5"/>
+
+          <!-- zone labels -->
+          <text x="44" y="186" text-anchor="middle" font-size="9" fill="#4fd98a" font-family="monospace" opacity=".9">Comprar</text>
+          <text x="44" y="196" text-anchor="middle" font-size="9" fill="#4fd98a" font-family="monospace" opacity=".9">forte</text>
+          <text x="88" y="104" text-anchor="middle" font-size="9" fill="#5aabf0" font-family="monospace" opacity=".9">Acumular</text>
+          <text x="200" y="48" text-anchor="middle" font-size="9" fill="#8090c0" font-family="monospace" opacity=".9">Neutro</text>
+          <text x="314" y="104" text-anchor="middle" font-size="9" fill="#f0a840" font-family="monospace" opacity=".9">Distribuir</text>
+          <text x="358" y="186" text-anchor="middle" font-size="9" fill="#f07070" font-family="monospace" opacity=".9">Vender</text>
+          <text x="358" y="196" text-anchor="middle" font-size="9" fill="#f07070" font-family="monospace" opacity=".9">forte</text>
+
+          <!-- active zone highlight arc — updated via JS -->
+          <path id="gauge-active-arc" d="" fill="none" stroke="transparent" stroke-width="28" stroke-linecap="butt" opacity="0.55"/>
+
+          <!-- needle group (rotates around cx=200 cy=200) -->
+          <g id="gauge-needle-g" style="transform-origin:200px 200px;transform:rotate(0deg);transition:transform 1s cubic-bezier(.4,0,.2,1);">
+            <line x1="200" y1="200" x2="200" y2="72" stroke="#e8eaf0" stroke-width="2.5" stroke-linecap="round"/>
+            <circle cx="200" cy="200" r="8" fill="#111521" stroke="#e8eaf0" stroke-width="1.5"/>
+            <circle cx="200" cy="200" r="3" fill="#e8eaf0"/>
+          </g>
+
+          <!-- score in center -->
+          <text id="gauge-center-score" x="200" y="176" text-anchor="middle" font-size="28" font-weight="700" fill="#5a6080" font-family="monospace">—</text>
+          <text x="200" y="194" text-anchor="middle" font-size="9" fill="#3a4060" font-family="monospace">pontos</text>
+        </svg>
+      </div>
+
+      <!-- 4 indicator cards -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:4px;">
+
+        <div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">Ciclo</div>
+            <div style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 5px;border-radius:3px;">×3</div>
+          </div>
+          <!-- mini arc for this indicator -->
+          <svg width="100%" viewBox="0 0 80 44" style="display:block;margin-bottom:6px;">
+            <path d="M8 40 A34 34 0 0 1 72 40" fill="none" stroke="#1e2235" stroke-width="7" stroke-linecap="round"/>
+            <path id="g-cycle-arc" d="" fill="none" stroke="#4fd98a" stroke-width="7" stroke-linecap="round" opacity="0"/>
+            <circle id="g-cycle-dot" cx="40" cy="40" r="4" fill="#5a6080" style="transform-origin:40px 40px;"/>
+          </svg>
+          <div id="g-cycle-val" style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--muted);">—</div>
+          <div id="g-cycle-lbl" style="font-size:10px;color:var(--muted);margin-top:2px;">calculando</div>
+        </div>
+
+        <div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">MVRV</div>
+            <div style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 5px;border-radius:3px;">×4</div>
+          </div>
+          <svg width="100%" viewBox="0 0 80 44" style="display:block;margin-bottom:6px;">
+            <path d="M8 40 A34 34 0 0 1 72 40" fill="none" stroke="#1e2235" stroke-width="7" stroke-linecap="round"/>
+            <path id="g-mvrv-arc" d="" fill="none" stroke="#4fd98a" stroke-width="7" stroke-linecap="round" opacity="0"/>
+            <circle id="g-mvrv-dot" cx="40" cy="40" r="4" fill="#5a6080" style="transform-origin:40px 40px;"/>
+          </svg>
+          <div id="g-mvrv-val" style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--muted);">—</div>
+          <div id="g-mvrv-lbl" style="font-size:10px;color:var(--muted);margin-top:2px;">carregando</div>
+        </div>
+
+        <div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">Funding</div>
+            <div style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 5px;border-radius:3px;">×2</div>
+          </div>
+          <svg width="100%" viewBox="0 0 80 44" style="display:block;margin-bottom:6px;">
+            <path d="M8 40 A34 34 0 0 1 72 40" fill="none" stroke="#1e2235" stroke-width="7" stroke-linecap="round"/>
+            <path id="g-fr-arc" d="" fill="none" stroke="#4fd98a" stroke-width="7" stroke-linecap="round" opacity="0"/>
+            <circle id="g-fr-dot" cx="40" cy="40" r="4" fill="#5a6080" style="transform-origin:40px 40px;"/>
+          </svg>
+          <div id="g-fr-val" style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--muted);">—</div>
+          <div id="g-fr-lbl" style="font-size:10px;color:var(--muted);margin-top:2px;">carregando</div>
+        </div>
+
+        <div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <div style="font-size:10px;color:var(--muted);letter-spacing:.07em;text-transform:uppercase;">OI 24h</div>
+            <div style="font-size:9px;color:var(--muted);background:var(--bg2);padding:1px 5px;border-radius:3px;">×1</div>
+          </div>
+          <svg width="100%" viewBox="0 0 80 44" style="display:block;margin-bottom:6px;">
+            <path d="M8 40 A34 34 0 0 1 72 40" fill="none" stroke="#1e2235" stroke-width="7" stroke-linecap="round"/>
+            <path id="g-oi-arc" d="" fill="none" stroke="#4fd98a" stroke-width="7" stroke-linecap="round" opacity="0"/>
+            <circle id="g-oi-dot" cx="40" cy="40" r="4" fill="#5a6080" style="transform-origin:40px 40px;"/>
+          </svg>
+          <div id="g-oi-val" style="font-family:var(--mono);font-size:14px;font-weight:500;color:var(--muted);">—</div>
+          <div id="g-oi-lbl" style="font-size:10px;color:var(--muted);margin-top:2px;">carregando</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CYCLE POSITION ── -->
+  <div class="section-header">
+    <span class="section-title">Posição no ciclo atual</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div id="cycle-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:24px 28px;margin-bottom:40px;">
+    <div style="color:var(--muted);font-family:var(--mono);font-size:13px;">calculando...</div>
+  </div>
+
+  <!-- ── METRICS ── -->
+  <div class="section-header">
+    <span class="section-title">Métricas em tempo real</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="cards-grid">
+
+    <!-- MVRV -->
+    <div class="card">
+      <div class="card-header">
+        <span class="metric-name">MVRV Ratio</span>
+        <span class="source-badge">CoinMetrics</span>
+      </div>
+      <div class="metric-value" id="mvrv-val">
+        <span class="loading">···</span>
+      </div>
+      <div class="metric-sub" id="mvrv-sub">Market Cap / Realized Cap</div>
+      <div class="signal-pill" id="mvrv-pill">
+        <div class="signal-dot" id="mvrv-dot"></div>
+        <span id="mvrv-signal">Carregando...</span>
+      </div>
+      <div class="legend">
+        <div class="legend-title">Interpretação histórica</div>
+        <div class="legend-row s-buy" id="mvrv-l1">
+          <div class="legend-bar bar-buy"></div>
+          <div class="legend-range" style="color:var(--buy-text);">&lt; 1,0</div>
+          <div class="legend-desc">Capitulação extrema — preço abaixo do custo médio de todos os holders</div>
+          <div class="legend-signal s-buy">Compra forte</div>
+        </div>
+        <div class="legend-row s-acc" id="mvrv-l2">
+          <div class="legend-bar bar-acc"></div>
+          <div class="legend-range" style="color:var(--acc-text);">1,0 – 2,0</div>
+          <div class="legend-desc">Subvalorizado — fase de acumulação antes do bull market</div>
+          <div class="legend-signal s-acc">Acumular</div>
+        </div>
+        <div class="legend-row s-neu" id="mvrv-l3">
+          <div class="legend-bar bar-neu"></div>
+          <div class="legend-range" style="color:var(--neu-text);">2,0 – 3,0</div>
+          <div class="legend-desc">Valor justo — bull market saudável, maior parte do ciclo</div>
+          <div class="legend-signal s-neu">Neutro / Hold</div>
+        </div>
+        <div class="legend-row s-dist" id="mvrv-l4">
+          <div class="legend-bar bar-dist"></div>
+          <div class="legend-range" style="color:var(--dist-text);">3,0 – 3,7</div>
+          <div class="legend-desc">Sobrevalorizado — fase de distribuição inteligente</div>
+          <div class="legend-signal s-dist">Distribuir</div>
+        </div>
+        <div class="legend-row s-sell" id="mvrv-l5">
+          <div class="legend-bar bar-sell"></div>
+          <div class="legend-range" style="color:var(--sell-text);">&gt; 3,7</div>
+          <div class="legend-desc">Euforia / topo de ciclo — holders antigos realizando lucros</div>
+          <div class="legend-signal s-sell">Venda forte</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FUNDING RATE -->
+    <div class="card">
+      <div class="card-header">
+        <span class="metric-name">Funding Rate</span>
+        <span class="source-badge">Binance · Bybit · OKX</span>
+      </div>
+      <div class="metric-value" id="fr-val">
+        <span class="loading">···</span>
+      </div>
+      <div class="metric-sub" id="fr-sub">Taxa a cada 8h (longs → shorts)</div>
+      <div class="signal-pill" id="fr-pill">
+        <div class="signal-dot" id="fr-dot"></div>
+        <span id="fr-signal">Carregando...</span>
+      </div>
+      <div class="legend">
+        <div class="legend-title">Interpretação</div>
+        <div class="legend-row s-buy" id="fr-l1">
+          <div class="legend-bar bar-buy"></div>
+          <div class="legend-range" style="color:var(--buy-text);">&lt; −0,05%</div>
+          <div class="legend-desc">Pânico de shorts — longs são pagos para entrar. Reversão altista iminente.</div>
+          <div class="legend-signal s-buy">Reversão alta</div>
+        </div>
+        <div class="legend-row s-acc" id="fr-l2">
+          <div class="legend-bar bar-acc"></div>
+          <div class="legend-range" style="color:var(--acc-text);">−0,05% a 0%</div>
+          <div class="legend-desc">Shorts dominam sem extremo — correção saudável ou ceticismo</div>
+          <div class="legend-signal s-acc">Cautela baixa</div>
+        </div>
+        <div class="legend-row s-neu" id="fr-l3">
+          <div class="legend-bar bar-neu"></div>
+          <div class="legend-range" style="color:var(--neu-text);">0% a +0,01%</div>
+          <div class="legend-desc">Mercado equilibrado — condição mais sustentável para tendências</div>
+          <div class="legend-signal s-neu">Neutro</div>
+        </div>
+        <div class="legend-row s-neu" id="fr-l4">
+          <div class="legend-bar bar-neu"></div>
+          <div class="legend-range" style="color:var(--neu-text);">+0,01% a +0,05%</div>
+          <div class="legend-desc">Longs pagando — otimismo crescente, saudável se OI cresce junto</div>
+          <div class="legend-signal s-neu">Tendência alta</div>
+        </div>
+        <div class="legend-row s-dist" id="fr-l5">
+          <div class="legend-bar bar-dist"></div>
+          <div class="legend-range" style="color:var(--dist-text);">+0,05% a +0,1%</div>
+          <div class="legend-desc">Euforia de longs alavancados — risco elevado de long squeeze</div>
+          <div class="legend-signal s-dist">Risco alto</div>
+        </div>
+        <div class="legend-row s-sell" id="fr-l6">
+          <div class="legend-bar bar-sell"></div>
+          <div class="legend-range" style="color:var(--sell-text);">&gt; +0,1%</div>
+          <div class="legend-desc">Mercado superalavancado — cascata de liquidações iminente</div>
+          <div class="legend-signal s-sell">Long squeeze</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OPEN INTEREST -->
+    <div class="card">
+      <div class="card-header">
+        <span class="metric-name">Open Interest — Tendência</span>
+        <span class="source-badge">Binance · Bybit · OKX</span>
+      </div>
+
+      <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:4px;">
+        <div style="font-size:52px;line-height:1;" id="oi-arrow"><span class="loading">···</span></div>
+        <div>
+          <div style="font-family:var(--mono);font-size:26px;font-weight:700;line-height:1;" id="oi-pct">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;" id="oi-window">variação em 24h (padrão profissional)</div>
+        </div>
+      </div>
+
+      <div style="font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:4px;" id="oi-abs">—</div>
+      <div class="metric-sub" id="oi-sub">Aguardando segunda leitura (30s)...</div>
+
+      <div class="signal-pill" id="oi-pill">
+        <div class="signal-dot" id="oi-dot"></div>
+        <span id="oi-signal">Carregando...</span>
+      </div>
+
+      <div class="legend">
+        <div class="legend-title">Interpretação (OI 24h + direção do preço em 24h)</div>
+        <div class="legend-row s-acc" id="oi-l1">
+          <div class="legend-bar bar-acc"></div>
+          <div class="legend-range" style="color:var(--acc-text);">OI sobe + Preço sobe</div>
+          <div class="legend-desc">Capital novo em longs — alta com convicção e combustível real</div>
+          <div class="legend-signal s-acc">Alta saudável</div>
+        </div>
+        <div class="legend-row s-sell" id="oi-l2">
+          <div class="legend-bar bar-sell"></div>
+          <div class="legend-range" style="color:var(--sell-text);">OI sobe + Preço cai</div>
+          <div class="legend-desc">Capital novo em shorts — baixa com convicção, apostando na queda</div>
+          <div class="legend-signal s-sell">Baixa forte</div>
+        </div>
+        <div class="legend-row s-dist" id="oi-l3">
+          <div class="legend-bar bar-dist"></div>
+          <div class="legend-range" style="color:var(--dist-text);">OI cai + Preço sobe</div>
+          <div class="legend-desc">Shorts sendo liquidados — alta explosiva mas frágil, sem novo combustível</div>
+          <div class="legend-signal s-dist">Short squeeze</div>
+        </div>
+        <div class="legend-row s-buy" id="oi-l4">
+          <div class="legend-bar bar-buy"></div>
+          <div class="legend-range" style="color:var(--buy-text);">OI cai + Preço cai</div>
+          <div class="legend-desc">Longs liquidados — capitulação e desalavancagem, possível fundo</div>
+          <div class="legend-signal s-buy">Long squeeze</div>
+        </div>
+        <div class="legend-row s-neu" id="oi-l5">
+          <div class="legend-bar bar-neu"></div>
+          <div class="legend-range" style="color:var(--neu-text);">OI estável (±0,1%)</div>
+          <div class="legend-desc">Mercado em consolidação — sem convicção forte em nenhuma direção</div>
+          <div class="legend-signal s-neu">Neutro</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── COMBO ── -->
+  <div class="section-header">
+    <span class="section-title">Combinando os 3 indicadores</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="combo-grid">
+    <div class="combo-card s-buy" style="border-color:var(--buy-border);">
+      <div class="combo-label" style="color:var(--buy-text);">Compra ideal</div>
+      <div class="combo-desc">MVRV &lt; 2 · Funding negativa ou neutra · OI baixo após flush. Mercado desalavancado, pessimista e subvalorizado — setup clássico de fundo de ciclo.</div>
+      <div class="combo-tag" style="background:var(--buy-bg);color:var(--buy-text);border:1px solid var(--buy-border);">Máxima convicção de compra</div>
+    </div>
+    <div class="combo-card s-sell" style="border-color:var(--sell-border);">
+      <div class="combo-label" style="color:var(--sell-text);">Venda ideal</div>
+      <div class="combo-desc">MVRV &gt; 3,5 · Funding extremamente positiva · OI em máximas históricas. Superalavancagem em topo de ciclo — zona de máximo risco sistêmico.</div>
+      <div class="combo-tag" style="background:var(--sell-bg);color:var(--sell-text);border:1px solid var(--sell-border);">Máximo risco do ciclo</div>
+    </div>
+    <div class="combo-card s-acc" style="border-color:var(--acc-border);">
+      <div class="combo-label" style="color:var(--acc-text);">Short squeeze iminente</div>
+      <div class="combo-desc">MVRV neutro · Funding muito negativa · OI alto. Muito dinheiro apostando na queda — qualquer rompimento de resistência deflagra liquidações em cadeia.</div>
+      <div class="combo-tag" style="background:var(--acc-bg);color:var(--acc-text);border:1px solid var(--acc-border);">Explosivo e rápido</div>
+    </div>
+    <div class="combo-card s-neu" style="border-color:var(--neu-border);">
+      <div class="combo-label" style="color:var(--neu-text);">Alta sustentável</div>
+      <div class="combo-desc">MVRV 2–3 · Funding moderada · OI crescendo gradualmente. Bull market com capital real entrando — tendência durável com risco administrável.</div>
+      <div class="combo-tag" style="background:var(--neu-bg);color:var(--neu-text);border:1px solid var(--neu-border);">Mantenha posição</div>
+    </div>
+  </div>
+
+  <!-- ── RULES ── -->
+  <div class="section-header">
+    <span class="section-title">Regras de ouro</span>
+    <div class="section-line"></div>
+  </div>
+
+  <div class="rules-list">
+    <div class="rule-item">
+      <span class="rule-arrow" style="color:var(--acc-text);">→</span>
+      <span>Alta de preço com <b>OI crescente + funding moderada + MVRV abaixo de 3</b> = tendência real financiada por capital novo. Continue posicionado.</span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-arrow" style="color:var(--sell-text);">→</span>
+      <span>Alta de preço com <b>OI caindo + funding alta</b> = short squeeze frágil. Não entre alavancado — não há combustível novo sustentando o movimento.</span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-arrow" style="color:var(--dist-text);">→</span>
+      <span>Queda com <b>OI caindo + funding negativa + MVRV abaixo de 1,5</b> = flush de longs. Possível fundo de médio prazo se formando.</span>
+    </div>
+    <div class="rule-item">
+      <span class="rule-arrow" style="color:var(--buy-text);">→</span>
+      <span>Fluxo sugerido: comece pelo <b>MVRV</b> (contexto macro) → <b>OI</b> (intensidade da alavancagem) → <b>Funding</b> (direção do excesso). Se os 3 apontam para o mesmo lado, o sinal é forte.</span>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <p>Dados: MVRV via <b>CoinMetrics Community API</b> (atualização diária) · Funding Rate e Open Interest via <b>Binance Futures API</b> (tempo real) · Preço via <b>Binance Spot API</b>.</p>
+  <p style="margin-top:4px;">Este dashboard é informativo. Não constitui recomendação de investimento.</p>
+</footer>
+
+<script>
+// ──────────────────────────────────────────────
+//  STATE
+// ──────────────────────────────────────────────
+var prevOI = null;
+var prevPrice = null;
+
+// ──────────────────────────────────────────────
+//  HELPERS
+// ──────────────────────────────────────────────
+function fmtUSD(n) {
+  if (n >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return '$' + (n / 1e6).toFixed(1) + 'M';
+  return '$' + n.toLocaleString('pt-BR');
+}
+
+function fmtPrice(n) {
+  return '$' + Number(n).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function now() {
+  return new Date().toLocaleTimeString('pt-BR');
+}
+
+function setEl(id, html) {
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function setTxt(id, txt) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = txt;
+}
+
+function setStyle(id, prop, val) {
+  var el = document.getElementById(id);
+  if (el) el.style[prop] = val;
+}
+
+// ──────────────────────────────────────────────
+//  HIGHLIGHT ACTIVE LEGEND ROW
+// ──────────────────────────────────────────────
+function highlightLegend(prefix, activeId) {
+  for (var i = 1; i <= 6; i++) {
+    var row = document.getElementById(prefix + '-l' + i);
+    if (!row) continue;
+    if (prefix + '-l' + i === activeId) {
+      row.style.outline = '1.5px solid rgba(255,255,255,0.25)';
+      row.style.background = 'rgba(255,255,255,0.04)';
+    } else {
+      row.style.outline = '';
+      row.style.background = '';
+    }
+  }
+}
+
+// ──────────────────────────────────────────────
+//  MVRV
+// ──────────────────────────────────────────────
+function classifyMVRV(v) {
+  if (v < 1.0)  return { label:'Capitulação extrema', cls:'buy',  dot:'#4fd98a', legend:'mvrv-l1' };
+  if (v < 2.0)  return { label:'Subvalorizado — acumular', cls:'acc',  dot:'#5aabf0', legend:'mvrv-l2' };
+  if (v < 3.0)  return { label:'Valor justo — neutro', cls:'neu',  dot:'#8090c0', legend:'mvrv-l3' };
+  if (v < 3.7)  return { label:'Sobrevalorizado — distribuir', cls:'dist', dot:'#f0a840', legend:'mvrv-l4' };
+  return             { label:'Euforia — topo de ciclo', cls:'sell', dot:'#f07070', legend:'mvrv-l5' };
+}
+
+function applyMVRV(mvrv, dateStr) {
+  var c = classifyMVRV(mvrv);
+  var colorVar = c.cls==='buy'?'--buy-text':c.cls==='acc'?'--acc-text':c.cls==='neu'?'--neu-text':c.cls==='dist'?'--dist-text':'--sell-text';
+  setEl('mvrv-val', '<span style="color:var(' + colorVar + ')">' + mvrv.toFixed(2) + '</span>');
+  setTxt('mvrv-sub', dateStr || 'Atualização diária');
+  var pill = document.getElementById('mvrv-pill');
+  pill.className = 'signal-pill pill-' + c.cls;
+  document.getElementById('mvrv-dot').className = 'signal-dot dot-' + c.cls;
+  setTxt('mvrv-signal', c.label);
+  highlightLegend('mvrv', c.legend);
+  // gauge score: buy=+3, acc=+2, neu=0, dist=-2, sell=-3
+  var mvrvScore = c.cls==='buy'?+4:c.cls==='acc'?+3:c.cls==='neu'?0:c.cls==='dist'?-3:-4;
+  updateGaugeIndicator('mvrv', mvrvScore, 4, mvrv.toFixed(2), c.cls==='buy'?'capitulação':c.cls==='acc'?'subvalorizado':c.cls==='neu'?'valor justo':c.cls==='dist'?'sobrevalorizado':'euforia');
+}
+
+function showMVRVManualInput() {
+  setEl('mvrv-val',
+    '<input id="mvrv-input" type="number" step="0.01" min="0" max="10" placeholder="ex: 2.45"' +
+    ' style="width:140px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;' +
+    'color:var(--text);font-family:var(--mono);font-size:28px;font-weight:700;padding:4px 10px;outline:none;">' +
+    '<button onclick="applyManualMVRV()" style="margin-left:10px;background:var(--bg3);border:1px solid var(--border2);' +
+    'border-radius:8px;color:var(--muted2);font-size:13px;padding:6px 12px;cursor:pointer;">OK</button>'
+  );
+  setEl('mvrv-sub',
+    '<span style="color:var(--dist-text);">API bloqueada por CORS. Digite o valor atual:</span> ' +
+    '<a href="https://charts.checkonchain.com/bitcoin/onchain/mvrvratio/mvrvratio.html" target="_blank" ' +
+    'style="color:var(--acc-text);text-decoration:none;font-size:11px;">ver no CheckOnChain ↗</a>'
+  );
+  var pill = document.getElementById('mvrv-pill');
+  pill.className = 'signal-pill pill-neu';
+  document.getElementById('mvrv-dot').className = 'signal-dot dot-neu';
+  setTxt('mvrv-signal', 'Entrada manual necessária');
+}
+
+function applyManualMVRV() {
+  var input = document.getElementById('mvrv-input');
+  if (!input) return;
+  var val = parseFloat(input.value);
+  if (isNaN(val) || val <= 0) { input.style.borderColor='var(--sell-border)'; return; }
+  applyMVRV(val, 'Valor inserido manualmente');
+}
+
+async function fetchMVRV() {
+  // ── Fonte principal: data/mvrv.json atualizado pelo GitHub Action ──
+  // O arquivo é gerado automaticamente 1x por dia.
+  // Quando rodando localmente (file://), pula para o fallback de proxy.
+  var isGitHubPages = location.protocol === 'https:' || location.protocol === 'http:';
+
+  if (isGitHubPages) {
+    try {
+      var r = await fetch('./data/mvrv.json', { signal: AbortSignal.timeout(6000) });
+      if (!r.ok) throw new Error('data file HTTP ' + r.status);
+      var j = await r.json();
+      if (j.mvrv && !isNaN(j.mvrv) && j.mvrv > 0) {
+        var updatedLabel = j.date ? 'Ref: ' + j.date + ' · ' + (j.source || 'GitHub Action') : '';
+        applyMVRV(j.mvrv, updatedLabel);
+        return;
+      }
+      throw new Error('mvrv null or invalid in data file');
+    } catch(e) { console.warn('data/mvrv.json falhou:', e.message); }
+  }
+
+  // ── Fallback 1: blockchain.info (funciona no browser, tem CORS liberado) ──
+  try {
+    var r2 = await fetch(
+      'https://api.blockchain.info/charts/mvrv?timespan=5days&sampled=false&format=json',
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!r2.ok) throw new Error('blockchain.info HTTP ' + r2.status);
+    var j2 = await r2.json();
+    var vals = j2.values || [];
+    if (!vals.length) throw new Error('empty values');
+    var last = vals[vals.length - 1];
+    var mvrv2 = parseFloat(last.y);
+    var date2 = new Date(last.x * 1000).toLocaleDateString('pt-BR');
+    if (isNaN(mvrv2) || mvrv2 <= 0) throw new Error('invalid value');
+    applyMVRV(mvrv2, 'Ref: ' + date2 + ' · Blockchain.info');
+    return;
+  } catch(e) { console.warn('blockchain.info falhou:', e.message); }
+
+  // ── Fallback 2: CoinMetrics direto ──────────────────────────────────
+  try {
+    var r3 = await fetch(
+      'https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=1',
+      { signal: AbortSignal.timeout(6000) }
+    );
+    if (!r3.ok) throw new Error('status ' + r3.status);
+    var j3 = await r3.json();
+    var row3 = j3.data[j3.data.length - 1];
+    var mvrv3 = parseFloat(row3.CapMrktCurUSD) / parseFloat(row3.CapRealUSD);
+    applyMVRV(mvrv3, 'Ref: ' + new Date(row3.time).toLocaleDateString('pt-BR') + ' · CoinMetrics');
+    return;
+  } catch(e) { console.warn('CoinMetrics falhou:', e.message); }
+
+  // ── Fallback 3: proxy CORS ───────────────────────────────────────────
+  try {
+    var proxy = 'https://corsproxy.io/?url=';
+    var target = encodeURIComponent('https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=1');
+    var r4 = await fetch(proxy + target, { signal: AbortSignal.timeout(8000) });
+    if (!r4.ok) throw new Error('proxy status ' + r4.status);
+    var j4 = await r4.json();
+    var row4 = j4.data[j4.data.length - 1];
+    var mvrv4 = parseFloat(row4.CapMrktCurUSD) / parseFloat(row4.CapRealUSD);
+    applyMVRV(mvrv4, 'Ref: ' + new Date(row4.time).toLocaleDateString('pt-BR') + ' · CoinMetrics/proxy');
+    return;
+  } catch(e) { console.warn('Proxy falhou:', e.message); }
+
+  // ── Último recurso: input manual ─────────────────────────────────────
+  showMVRVManualInput();
+}
+
+// ──────────────────────────────────────────────
+//  FUNDING RATE
+// ──────────────────────────────────────────────
+function classifyFR(pct) {
+  if (pct <= -0.05) return { label:'Pânico — reversão altista iminente', cls:'buy',  dot:'#4fd98a', legend:'fr-l1' };
+  if (pct < 0)      return { label:'Ceticismo — cautela baixista',        cls:'acc',  dot:'#5aabf0', legend:'fr-l2' };
+  if (pct <= 0.01)  return { label:'Mercado equilibrado — neutro',         cls:'neu',  dot:'#8090c0', legend:'fr-l3' };
+  if (pct <= 0.05)  return { label:'Otimismo moderado — tendência alta',   cls:'neu',  dot:'#8090c0', legend:'fr-l4' };
+  if (pct <= 0.1)   return { label:'Euforia — risco elevado de squeeze',   cls:'dist', dot:'#f0a840', legend:'fr-l5' };
+  return                   { label:'Superalavancado — long squeeze iminente', cls:'sell', dot:'#f07070', legend:'fr-l6' };
+}
+
+async function fetchFundingRate() {
+  // CoinGlass shows weighted average across exchanges — we replicate that here
+  // Sources: Binance, Bybit, OKX (the 3 highest OI exchanges for BTC perps)
+  var rates = [];
+  var sources = [];
+
+  // 1. Binance
+  try {
+    var r1 = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT');
+    var j1 = await r1.json();
+    var fr1 = parseFloat(j1.lastFundingRate) * 100;
+    if (!isNaN(fr1)) { rates.push(fr1); sources.push('Binance ' + (fr1>=0?'+':'')+fr1.toFixed(4)+'%'); }
+  } catch(e) { console.warn('Binance FR failed', e); }
+
+  // 2. Bybit
+  try {
+    var r2 = await fetch('https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT');
+    var j2 = await r2.json();
+    var fr2 = parseFloat(j2.result.list[0].fundingRate) * 100;
+    if (!isNaN(fr2)) { rates.push(fr2); sources.push('Bybit ' + (fr2>=0?'+':'')+fr2.toFixed(4)+'%'); }
+  } catch(e) { console.warn('Bybit FR failed', e); }
+
+  // 3. OKX
+  try {
+    var r3 = await fetch('https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP');
+    var j3 = await r3.json();
+    var fr3 = parseFloat(j3.data[0].fundingRate) * 100;
+    if (!isNaN(fr3)) { rates.push(fr3); sources.push('OKX ' + (fr3>=0?'+':'')+fr3.toFixed(4)+'%'); }
+  } catch(e) { console.warn('OKX FR failed', e); }
+
+  if (rates.length === 0) {
+    setEl('fr-val', '<span class="error-text">Erro ao carregar</span>');
+    setTxt('fr-signal', 'Falha nas APIs');
+    return;
+  }
+
+  // Simple average (CoinGlass uses weighted by OI, this is a close approximation)
+  var avg = rates.reduce(function(a,b){ return a+b; }, 0) / rates.length;
+  var c = classifyFR(avg);
+  var sign = avg >= 0 ? '+' : '';
+  var color = c.cls==='buy'?'var(--buy-text)':c.cls==='acc'?'var(--acc-text)':c.cls==='neu'?'var(--neu-text)':c.cls==='dist'?'var(--dist-text)':'var(--sell-text)';
+
+  setEl('fr-val', '<span style="color:' + color + '">' + sign + avg.toFixed(4) + '%</span>');
+  setTxt('fr-sub', sources.join(' · '));
+
+  document.getElementById('fr-pill').className = 'signal-pill pill-' + c.cls;
+  document.getElementById('fr-dot').className = 'signal-dot dot-' + c.cls;
+  setTxt('fr-signal', c.label);
+  highlightLegend('fr', c.legend);
+  // gauge score: buy=+2, acc=+1, neu=0, dist=-2, sell=-3
+  var frScore = c.cls==='buy'?+2:c.cls==='acc'?+1:c.cls==='neu'?0:c.cls==='dist'?-1:-2;
+  var frPctStr = (avg>=0?'+':'') + avg.toFixed(4) + '%';
+  updateGaugeIndicator('fr', frScore, 2, frPctStr, c.cls==='buy'?'pânico shorts':c.cls==='acc'?'levemente neg.':c.cls==='neu'?'neutro':c.cls==='dist'?'euforia longs':'superalavancado');
+}
+
+// ──────────────────────────────────────────────
+//  OPEN INTEREST — 24h window (professional standard)
+//  Uses Binance OI historical endpoint (1h candles)
+//  Primary signal: 24h change  |  Secondary: 1h change
+// ──────────────────────────────────────────────
+function classifyOI(chg24h, chg1h, priceChg24h) {
+  // Use 24h as the primary signal — filters noise, shows real conviction
+  var oiUp24 = chg24h >  1.5;   // >+1.5% in 24h = meaningful new longs/shorts entering
+  var oiDn24 = chg24h < -1.5;   // <-1.5% in 24h = meaningful deleveraging
+  var prUp   = priceChg24h >  0.5;
+  var prDn   = priceChg24h < -0.5;
+
+  if (oiUp24 && prUp)  return { label:'Capital novo em longs — alta com convicção',      cls:'acc',  legend:'oi-l1' };
+  if (oiUp24 && prDn)  return { label:'Capital novo em shorts — baixa com convicção',     cls:'sell', legend:'oi-l2' };
+  if (oiDn24 && prUp)  return { label:'Shorts liquidados — short squeeze em curso',        cls:'dist', legend:'oi-l3' };
+  if (oiDn24 && prDn)  return { label:'Longs liquidados — desalavancagem/capitulação',     cls:'buy',  legend:'oi-l4' };
+  return                      { label:'OI estável — sem convicção direcional em 24h',      cls:'neu',  legend:'oi-l5' };
+}
+
+async function fetchOI(btcPrice) {
+  // CoinGlass aggregates OI across all major exchanges.
+  // We fetch Binance + Bybit + OKX historical data (25 x 1h candles each)
+  // and sum them to get market-wide OI, matching CoinGlass methodology.
+
+  var oiNow  = 0;
+  var oi24h  = 0;
+  var oi1h   = 0;
+  var sources = [];
+
+  // 1. Binance — official futures data endpoint
+  try {
+    var r1 = await fetch('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=25');
+    var j1 = await r1.json();
+    if (j1 && j1.length >= 25) {
+      oiNow += parseFloat(j1[j1.length-1].sumOpenInterest) * btcPrice;
+      oi1h  += parseFloat(j1[j1.length-2].sumOpenInterest) * btcPrice;
+      oi24h += parseFloat(j1[0].sumOpenInterest)           * btcPrice;
+      sources.push('Binance');
+    }
+  } catch(e) { console.warn('OI Binance failed', e); }
+
+  // 2. Bybit — linear (USDT) perp
+  try {
+    var r2 = await fetch('https://api.bybit.com/v5/market/open-interest?category=linear&symbol=BTCUSDT&intervalTime=1h&limit=25');
+    var j2 = await r2.json();
+    var list2 = j2.result && j2.result.list;
+    if (list2 && list2.length >= 25) {
+      // Bybit returns newest first
+      oiNow += parseFloat(list2[0].openInterest)            * btcPrice;
+      oi1h  += parseFloat(list2[1].openInterest)            * btcPrice;
+      oi24h += parseFloat(list2[list2.length-1].openInterest) * btcPrice;
+      sources.push('Bybit');
+    }
+  } catch(e) { console.warn('OI Bybit failed', e); }
+
+  // 3. OKX — USDT perpetual swap
+  try {
+    var r3 = await fetch('https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-history?instId=BTC-USDT-SWAP&period=1H&limit=25');
+    var j3 = await r3.json();
+    var list3 = j3.data;
+    if (list3 && list3.length >= 25) {
+      // OKX returns newest first, values in contracts (1 contract = 100 USD)
+      var mult = 100;
+      oiNow += parseFloat(list3[0][1])              * mult;
+      oi1h  += parseFloat(list3[1][1])              * mult;
+      oi24h += parseFloat(list3[list3.length-1][1]) * mult;
+      sources.push('OKX');
+    }
+  } catch(e) { console.warn('OI OKX failed', e); }
+
+  if (oiNow === 0) {
+    setEl('oi-arrow', '<span style="color:var(--sell-text);font-size:28px;">!</span>');
+    setEl('oi-pct', '');
+    setTxt('oi-signal', 'Falha nas APIs');
+    return;
+  }
+
+  var chg24h = ((oiNow - oi24h) / oi24h) * 100;
+  var chg1h  = ((oiNow - oi1h)  / oi1h)  * 100;
+
+  // 24h price change from Binance futures ticker
+  var priceChg24h = 0;
+  try {
+    var tickRes  = await fetch('https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=BTCUSDT');
+    var tickJson = await tickRes.json();
+    priceChg24h = parseFloat(tickJson.priceChangePercent);
+  } catch(e) { console.warn('price 24h ticker failed', e); }
+
+  var c = classifyOI(chg24h, chg1h, priceChg24h);
+  var colorVar = c.cls==='buy'?'--buy-text':c.cls==='acc'?'--acc-text':c.cls==='neu'?'--neu-text':c.cls==='dist'?'--dist-text':'--sell-text';
+  var color = 'var(' + colorVar + ')';
+
+  var arrow = chg24h > 1.5 ? '↑' : chg24h < -1.5 ? '↓' : '→';
+  setEl('oi-arrow', '<span style="color:' + color + '">' + arrow + '</span>');
+
+  var sign24 = chg24h >= 0 ? '+' : '';
+  setEl('oi-pct', '<span style="color:' + color + '">' + sign24 + chg24h.toFixed(2) + '%</span>');
+  setTxt('oi-window', 'variação em 24h · ' + sources.join(' + '));
+
+  var sign1h = chg1h >= 0 ? '+' : '';
+  var prSign = priceChg24h >= 0 ? '+' : '';
+  setTxt('oi-abs', fmtUSD(oiNow) + ' em aberto · 1h: ' + sign1h + chg1h.toFixed(2) + '%');
+  setTxt('oi-sub', 'BTC 24h: ' + prSign + priceChg24h.toFixed(2) + '% · Fonte: ' + sources.join(' + '));
+
+  document.getElementById('oi-pill').className = 'signal-pill pill-' + c.cls;
+  document.getElementById('oi-dot').className = 'signal-dot dot-' + c.cls;
+  setTxt('oi-signal', c.label);
+  highlightLegend('oi', c.legend);
+  // gauge score: acc(alta saudável)=+1, sell(baixa)=-2, dist(short squeeze)=0, buy(long squeeze/fundo)=+2, neu=0
+  var oiScore = c.cls==='acc'?+1:c.cls==='sell'?-1:c.cls==='dist'?0:c.cls==='buy'?+1:0;
+  updateGaugeIndicator('oi', oiScore, 1, sign24+chg24h.toFixed(2)+'%', c.cls==='acc'?'alta saudável':c.cls==='sell'?'baixa forte':c.cls==='dist'?'short squeeze':c.cls==='buy'?'long squeeze':'estável');
+
+  prevOI = oiNow;
+}
+
+
+// ──────────────────────────────────────────────
+//  COMPOSITE GAUGE — scores from all 4 indicators
+//  Range: each indicator −3 to +3, total −10 to +10
+//  Positive = buy signal, Negative = sell signal
+// ──────────────────────────────────────────────
+var gScores = { cycle: null, mvrv: null, fr: null, oi: null };
+
+function scoreColor(s) {
+  if (s >=  2) return '#4fd98a';
+  if (s >=  1) return '#5aabf0';
+  if (s === 0) return '#8090c0';
+  if (s >= -1) return '#f0a840';
+  return '#f07070';
+}
+
+// Convert score (-max..+max) to angle on the half-circle gauge
+// -max = -90deg (left/buy), 0 = 0deg (top/neutral), +max = +90deg (right/sell)
+// needle starts pointing up (SVG rotate 0 = pointing up = neutral)
+function scoreToAngle(s, max) {
+  return (s / max) * 90;
+}
+
+// Arc path on the mini half-circle (cx=40, cy=40, r=34)
+// score in [-max, +max]; arc drawn from neutral (top) toward buy (left) or sell (right)
+function miniArcPath(s, max) {
+  if (s === 0) return '';
+  var cx = 40, cy = 40, r = 34;
+  // neutral angle = 90deg from left = top of arc (angle 0 in standard, but our arc goes left to right)
+  // in our viewBox: arc start is at (8,40) = 180deg, end at (72,40) = 0deg
+  // "top" = (40,6) = 90deg in standard math
+  // score fraction: 0 = top (90deg), -1 = full left (180deg), +1 = full right (0deg)
+  var frac = s / max; // -1..+1
+  // neutral point angle (in SVG arc convention, measuring from 3-o-clock counterclockwise)
+  // We'll use parametric: angle from top, going left for buy, right for sell
+  var neutralAngle = Math.PI / 2; // pointing up
+  var sweepAngle   = frac * Math.PI / 2; // how far to sweep (pos=right/sell, neg=left/buy)
+
+  var startAngle, endAngle;
+  startAngle = neutralAngle;
+  endAngle   = neutralAngle - sweepAngle; // subtract because SVG y flips
+
+  var x1 = cx + r * Math.cos(startAngle);
+  var y1 = cy - r * Math.sin(startAngle);
+  var x2 = cx + r * Math.cos(endAngle);
+  var y2 = cy - r * Math.sin(endAngle);
+
+  var largeArc = Math.abs(sweepAngle) > Math.PI ? 1 : 0;
+  var sweep    = sweepAngle > 0 ? 1 : 0; // positive score = buy = arcs go left (counter-clockwise)
+
+  return 'M ' + x1.toFixed(1) + ' ' + y1.toFixed(1) +
+         ' A ' + r + ' ' + r + ' 0 ' + largeArc + ' ' + sweep +
+         ' ' + x2.toFixed(1) + ' ' + y2.toFixed(1);
+}
+
+// Dot position on mini arc
+function miniDotPos(s, max) {
+  var cx = 40, cy = 40, r = 34;
+  var frac = s / max;
+  var angle = Math.PI / 2 + frac * Math.PI / 2; // positive frac = buy = left side
+  return {
+    x: (cx + r * Math.cos(angle)).toFixed(1),
+    y: (cy - r * Math.sin(angle)).toFixed(1)
+  };
+}
+
+// Active arc on the main gauge (cx=200, cy=200, r=140)
+function mainActiveArc(norm) {
+  // norm: -10..+10; zones: -10..-6=strong buy, -6..-2=buy, -2..+2=neutral, +2..+6=dist, +6..+10=sell
+  // arcs are pre-drawn segments; just highlight the current zone
+  var zoneArcs = {
+    buy2:  'M 60 200 A 140 140 0 0 1 101.7 109.8',
+    buy1:  'M 101.7 109.8 A 140 140 0 0 1 157.9 66.4',
+    neu:   'M 157.9 66.4 A 140 140 0 0 1 242.1 66.4',
+    dist:  'M 242.1 66.4 A 140 140 0 0 1 298.3 109.8',
+    sell:  'M 298.3 109.8 A 140 140 0 0 1 340 200'
+  };
+  var zoneColors = { buy2:'#4fd98a', buy1:'#5aabf0', neu:'#8090c0', dist:'#f0a840', sell:'#f07070' };
+  var zone;
+  if (norm >= 6)       zone = 'buy2';   // high positive = strong buy
+  else if (norm >= 2)  zone = 'buy1';
+  else if (norm > -2)  zone = 'neu';
+  else if (norm >= -6) zone = 'dist';
+  else                 zone = 'sell';   // high negative = strong sell
+  return { d: zoneArcs[zone], col: zoneColors[zone] };
+}
+
+function updateGauge() {
+  var scores = gScores;
+  var defined = Object.values(scores).filter(function(v){ return v !== null; });
+  if (defined.length === 0) return;
+
+  var total = defined.reduce(function(a,b){ return a+b; }, 0);
+  var norm  = Math.max(-10, Math.min(10, Math.round(total)));
+
+  // Rotate needle: maps norm -10..+10 → angle -90..+90 degrees
+  var angle = -(norm / 10) * 90;  // negative: positive score = buy = left
+  var needleG = document.getElementById('gauge-needle-g');
+  if (needleG) needleG.style.transform = 'rotate(' + angle + 'deg)';
+
+  // Highlight active arc zone
+  var za = mainActiveArc(norm);
+  var activeArc = document.getElementById('gauge-active-arc');
+  if (activeArc) {
+    activeArc.setAttribute('d', za.d);
+    activeArc.setAttribute('stroke', za.col);
+    activeArc.setAttribute('opacity', '0.6');
+  }
+
+  // Center score text
+  var centerScore = document.getElementById('gauge-center-score');
+  if (centerScore) {
+    centerScore.textContent = (norm >= 0 ? '+' : '') + norm;
+    centerScore.setAttribute('fill', za.col);
+  }
+
+  // Zone label and sub
+  var label, sub, col = za.col;
+  if (norm >= 6)       { label = 'Comprar forte';  sub = 'Todos os indicadores apontam acumulação agressiva'; }
+  else if (norm >= 2)  { label = 'Acumular';        sub = 'Maioria dos indicadores em zona de compra'; }
+  else if (norm > -2)  { label = 'Neutro';          sub = 'Sem sinal direcional claro — aguarde confirmação'; }
+  else if (norm >= -6) { label = 'Distribuir';      sub = 'Maioria dos indicadores em zona de cautela'; }
+  else                 { label = 'Vender forte';    sub = 'Todos os indicadores apontam distribuição agressiva'; }
+
+  var incomplete = defined.length < 4 ? ' <span style="color:var(--muted);font-size:11px;">(' + defined.length + '/4 carregados)</span>' : '';
+  setEl('gauge-label', '<span style="color:' + col + '">' + label + '</span>');
+  setEl('gauge-sub', '<span style="color:var(--muted2);">' + sub + '</span>' + incomplete);
+  setEl('gauge-score-val', '<span style="color:' + col + '">' + (norm >= 0 ? '+' : '') + norm + '</span>');
+}
+
+function updateGaugeIndicator(id, score, max, valTxt, lblTxt) {
+  gScores[id] = score;
+  var col = scoreColor(score);
+
+  // mini arc
+  var arcEl = document.getElementById('g-' + id + '-arc');
+  var dotEl = document.getElementById('g-' + id + '-dot');
+  if (arcEl) {
+    var d = miniArcPath(score, max);
+    arcEl.setAttribute('d', d);
+    arcEl.setAttribute('stroke', col);
+    arcEl.setAttribute('opacity', score !== 0 ? '0.85' : '0');
+  }
+  if (dotEl) {
+    var pos = miniDotPos(score, max);
+    dotEl.setAttribute('cx', pos.x);
+    dotEl.setAttribute('cy', pos.y);
+    dotEl.setAttribute('fill', col);
+  }
+
+  // text
+  var valEl = document.getElementById('g-' + id + '-val');
+  var lblEl = document.getElementById('g-' + id + '-lbl');
+  if (valEl) { valEl.textContent = (score > 0 ? '+' : '') + score + ' pts'; valEl.style.color = col; }
+  if (lblEl) { lblEl.textContent = lblTxt; lblEl.style.color = col; }
+
+  updateGauge();
+}
+
+// ──────────────────────────────────────────────
+//  CYCLE POSITION
+//  Fundo ciclo 5: 21 Nov 2022
+//  Bull range: 1050–1100 dias (mid 1075)
+//  Bear range:  350–420 dias (mid 385)
+// ──────────────────────────────────────────────
+function renderCyclePosition() {
+  var FUNDO    = new Date('2022-11-21');
+  var BULL_MIN = 1050, BULL_MID = 1075, BULL_MAX = 1100;
+  var BEAR_MIN =  350, BEAR_MID =  385, BEAR_MAX =  420;
+  var today    = new Date();
+  var msDay    = 86400000;
+  var daysSinceFundo = Math.floor((today - FUNDO) / msDay);
+
+  function addDays(d, n) { return new Date(d.getTime() + n * msDay); }
+  function fmtDateFull(d) { return d.toLocaleDateString('pt-BR', {day:'2-digit', month:'short', year:'numeric'}); }
+
+  // ── helpers for the SVG timeline ────────────────────────
+  // Total timeline width in SVG units representing full cycle
+  // Bull: 0–BULL_MAX, Bear: BULL_MAX–(BULL_MAX+BEAR_MAX)
+  var TOTAL = BULL_MAX + BEAR_MAX;   // 1520
+  var W = 600; // SVG inner width
+  var H = 120;
+
+  function xOf(day) { return Math.round(day / TOTAL * W); }
+
+  var isBull = daysSinceFundo < BULL_MAX;
+  var inZone, daysSinceTop, cycleScore;
+
+  if (isBull) {
+    inZone = daysSinceFundo >= BULL_MIN;
+    cycleScore = inZone ? -3 : (daysSinceFundo > BULL_MID * 0.75 ? -1 : (daysSinceFundo > BULL_MID * 0.4 ? +1 : +2));
+    updateGaugeIndicator('cycle', cycleScore, 3, daysSinceFundo + 'd', inZone ? 'zona de topo' : 'fase de alta');
+  } else {
+    daysSinceTop = daysSinceFundo - BULL_MID;
+    inZone = daysSinceTop >= BEAR_MIN;
+    var cs2 = inZone ? +3 : (daysSinceTop > BEAR_MID * 0.5 ? +2 : (daysSinceTop > BEAR_MID * 0.2 ? +1 : -1));
+    updateGaugeIndicator('cycle', cs2, 3, daysSinceTop + 'd bear', inZone ? 'zona de fundo' : 'bear market');
+  }
+
+  // ── derived values ───────────────────────────────────────
+  var projTopMin  = fmtDateFull(addDays(FUNDO, BULL_MIN));
+  var projTopMax  = fmtDateFull(addDays(FUNDO, BULL_MAX));
+  var projectedTopDate = addDays(FUNDO, BULL_MID);
+  var projFundoMin = fmtDateFull(addDays(projectedTopDate, BEAR_MIN));
+  var projFundoMax = fmtDateFull(addDays(projectedTopDate, BEAR_MAX));
+
+  var toTopMin  = Math.max(0, BULL_MIN - daysSinceFundo);
+  var toTopMax  = Math.max(0, BULL_MAX - daysSinceFundo);
+  var toFundoMin = isBull ? null : Math.max(0, BEAR_MIN - (daysSinceFundo - BULL_MID));
+  var toFundoMax = isBull ? null : Math.max(0, BEAR_MAX - (daysSinceFundo - BULL_MID));
+
+  // Current day position on the full timeline
+  var curDay  = isBull ? daysSinceFundo : BULL_MID + (daysSinceFundo - BULL_MID);
+  var curX    = xOf(Math.min(curDay, TOTAL - 2));
+
+  // Key x positions
+  var xFundo  = xOf(0);
+  var xTopMin = xOf(BULL_MIN);
+  var xTopMid = xOf(BULL_MID);
+  var xTopMax = xOf(BULL_MAX);
+  var xFundoMin2 = xOf(BULL_MID + BEAR_MIN);
+  var xFundoMax2 = xOf(BULL_MID + BEAR_MAX);
+  var xEnd    = xOf(TOTAL);
+
+  // Colors
+  var bullCol  = '#1a7a4a';
+  var zoneCol  = isBull ? '#4fd98a' : '#f07070';
+  var bearCol  = '#791F1F';
+  var curCol   = isBull ? (inZone ? '#4fd98a' : '#97C459') : (inZone ? '#f07070' : '#f09595');
+  var bgTrack  = '#111521';
+
+  // ── build card HTML ─────────────────────────────────────
+  var phaseLabel = isBull
+    ? (inZone ? 'Fase de alta — zona de topo' : 'Fase de alta — bull market')
+    : (inZone ? 'Fase de baixa — zona de fundo' : 'Fase de baixa — bear market');
+  var phaseColor = isBull ? (inZone ? '#4fd98a' : '#97C459') : (inZone ? '#f07070' : '#f09595');
+
+  var html = '';
+
+  // ── header row ──────────────────────────────────────────
+  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;">';
+  html += '<div>';
+  html += '<div style="font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;">Posição no ciclo histórico (padrão 1064 / 364 dias)</div>';
+  html += '<div style="font-size:20px;font-weight:500;color:' + phaseColor + ';">' + phaseLabel + '</div>';
+  html += '</div>';
+  if (inZone) {
+    var zoneTxt = isBull ? 'ZONA DE TOPO' : 'ZONA DE FUNDO';
+    var zoneBg  = isBull ? '#071a10' : '#200808';
+    var zoneB   = isBull ? '#1d5e39' : '#5e1a1a';
+    html += '<div style="font-size:11px;font-weight:500;padding:6px 14px;border-radius:8px;background:' + zoneBg + ';color:' + zoneCol + ';border:0.5px solid ' + zoneB + ';letter-spacing:.06em;">' + zoneTxt + '</div>';
+  }
+  html += '</div>';
+
+  // ── SVG timeline ────────────────────────────────────────
+  html += '<div style="margin-bottom:22px;overflow:hidden;">';
+  html += '<svg width="100%" viewBox="0 0 ' + (W+40) + ' ' + (H+10) + '" style="display:block;">';
+
+  var ox = 20; // left offset
+
+  // Background track
+  html += '<rect x="' + ox + '" y="32" width="' + W + '" height="20" rx="10" fill="' + bgTrack + '"/>';
+
+  // Bull zone fill (green, full bull range)
+  html += '<rect x="' + (ox+xFundo) + '" y="32" width="' + xTopMax + '" height="20" rx="10" fill="' + bullCol + '" opacity=".35"/>';
+
+  // Bear zone fill (red, full bear range after top)
+  html += '<rect x="' + (ox+xTopMax) + '" y="32" width="' + (xEnd-xTopMax) + '" height="20" rx="0" fill="' + bearCol + '" opacity=".3"/>';
+  // round right end
+  html += '<rect x="' + (ox+xEnd-10) + '" y="32" width="10" height="20" rx="0" fill="' + bearCol + '" opacity=".3"/>';
+
+  // Topo zone highlight (bright green band)
+  html += '<rect x="' + (ox+xTopMin) + '" y="28" width="' + (xTopMax-xTopMin) + '" height="28" rx="4" fill="#4fd98a" opacity=".18"/>';
+  html += '<rect x="' + (ox+xTopMin) + '" y="28" width="' + (xTopMax-xTopMin) + '" height="28" rx="4" fill="none" stroke="#4fd98a" stroke-width="0.5" opacity=".5"/>';
+
+  // Fundo zone highlight (bright red band)
+  html += '<rect x="' + (ox+xFundoMin2) + '" y="28" width="' + (xFundoMax2-xFundoMin2) + '" height="28" rx="4" fill="#f07070" opacity=".12"/>';
+  html += '<rect x="' + (ox+xFundoMin2) + '" y="28" width="' + (xFundoMax2-xFundoMin2) + '" height="28" rx="4" fill="none" stroke="#f07070" stroke-width="0.5" opacity=".4"/>';
+
+  // Current position marker (tall line + dot)
+  html += '<line x1="' + (ox+curX) + '" y1="16" x2="' + (ox+curX) + '" y2="68" stroke="' + curCol + '" stroke-width="2" stroke-linecap="round"/>';
+  html += '<circle cx="' + (ox+curX) + '" cy="42" r="6" fill="' + curCol + '"/>';
+  html += '<circle cx="' + (ox+curX) + '" cy="42" r="10" fill="' + curCol + '" opacity=".2"/>';
+
+  // "Hoje" label above current marker
+  html += '<text x="' + (ox+curX) + '" y="11" text-anchor="middle" font-size="9" fill="' + curCol + '" font-family="monospace" font-weight="600">HOJE</text>';
+
+  // Axis tick labels below track
+  // Fundo label
+  html += '<text x="' + (ox+xFundo) + '" y="66" text-anchor="middle" font-size="8.5" fill="#5a6080" font-family="monospace">Fundo</text>';
+  html += '<text x="' + (ox+xFundo) + '" y="75" text-anchor="middle" font-size="8" fill="#3a4060" font-family="monospace">Nov 2022</text>';
+
+  // Top zone label
+  var xTopLabelX = ox + xTopMin + Math.round((xTopMax-xTopMin)/2);
+  html += '<text x="' + xTopLabelX + '" y="66" text-anchor="middle" font-size="8.5" fill="#4fd98a" font-family="monospace" opacity=".8">zona topo</text>';
+  html += '<text x="' + xTopLabelX + '" y="75" text-anchor="middle" font-size="7.5" fill="#4fd98a" font-family="monospace" opacity=".6">' + BULL_MIN + '–' + BULL_MAX + 'd</text>';
+
+  // Fundo zone 2 label
+  var xFundoLabelX = ox + xFundoMin2 + Math.round((xFundoMax2-xFundoMin2)/2);
+  html += '<text x="' + xFundoLabelX + '" y="66" text-anchor="middle" font-size="8.5" fill="#f07070" font-family="monospace" opacity=".8">zona fundo</text>';
+  html += '<text x="' + xFundoLabelX + '" y="75" text-anchor="middle" font-size="7.5" fill="#f07070" font-family="monospace" opacity=".6">' + (BULL_MID+BEAR_MIN) + '–' + (BULL_MID+BEAR_MAX) + 'd</text>';
+
+  // Phase arc labels on track
+  var xBullMid = ox + Math.round(xTopMax / 2);
+  html += '<text x="' + xBullMid + '" y="45" text-anchor="middle" font-size="8" fill="#4fd98a" font-family="monospace" opacity=".7">bull market ' + BULL_MAX + 'd</text>';
+
+  var xBearMid = ox + xTopMax + Math.round((xEnd - xTopMax) / 2);
+  html += '<text x="' + xBearMid + '" y="45" text-anchor="middle" font-size="8" fill="#f09595" font-family="monospace" opacity=".7">bear ' + BEAR_MAX + 'd</text>';
+
+  // Current day tick label above marker (if room)
+  html += '<text x="' + (ox+curX) + '" y="90" text-anchor="middle" font-size="8" fill="' + curCol + '" font-family="monospace" opacity=".9">dia ' + (isBull ? daysSinceFundo : daysSinceFundo) + '</text>';
+
+  html += '</svg>';
+  html += '</div>';
+
+  // ── stats row ────────────────────────────────────────────
+  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px;">';
+
+  // Card 1: dias no ciclo
+  var dLabel = isBull ? 'dias de bull' : 'dias de bear';
+  var dVal   = isBull ? daysSinceFundo : (daysSinceFundo - BULL_MID);
+  var dColor = isBull ? '#4fd98a' : '#f07070';
+  html += '<div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">';
+  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">dias no ciclo</div>';
+  html += '<div style="font-family:var(--mono);font-size:26px;font-weight:700;color:' + dColor + ';line-height:1;">' + dVal + '</div>';
+  html += '<div style="font-size:10px;color:var(--muted);margin-top:3px;">' + dLabel + '</div>';
+  html += '</div>';
+
+  // Card 2: dias para próxima zona
+  var d2Val, d2Label, d2Color, d2Sub;
+  if (isBull && !inZone)      { d2Val = toTopMin + '–' + toTopMax; d2Label = 'dias p/ zona de topo'; d2Color = '#97C459'; d2Sub = projTopMin + ' a ' + projTopMax; }
+  else if (isBull && inZone)  { d2Val = 'AGORA'; d2Label = 'zona de topo ativa'; d2Color = '#4fd98a'; d2Sub = 'MVRV > 3,5 → distribuir'; }
+  else if (!isBull && !inZone){ d2Val = (toFundoMin) + '–' + (toFundoMax); d2Label = 'dias p/ zona de fundo'; d2Color = '#f09595'; d2Sub = projFundoMin + ' a ' + projFundoMax; }
+  else                        { d2Val = 'AGORA'; d2Label = 'zona de fundo ativa'; d2Color = '#f07070'; d2Sub = 'MVRV < 1,5 → acumular'; }
+
+  var d2Bg = inZone ? (isBull ? '#071a10' : '#200808') : 'var(--bg3)';
+  var d2Border = inZone ? (isBull ? '0.5px solid #1d5e39' : '0.5px solid #5e1a1a') : '0.5px solid var(--border)';
+  html += '<div style="background:' + d2Bg + ';border-radius:10px;padding:13px 14px;border:' + d2Border + ';">';
+  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">próxima zona</div>';
+  html += '<div style="font-family:var(--mono);font-size:' + (inZone ? '18px' : '20px') + ';font-weight:700;color:' + d2Color + ';line-height:1;">' + d2Val + '</div>';
+  html += '<div style="font-size:10px;color:' + d2Color + ';margin-top:3px;opacity:.8;">' + d2Label + '</div>';
+  if (d2Sub) html += '<div style="font-size:9px;color:var(--muted);margin-top:3px;">' + d2Sub + '</div>';
+  html += '</div>';
+
+  // Card 3: % do ciclo concluído
+  var cyclePct, cycleTotal, cycleColor;
+  if (isBull) {
+    cyclePct   = Math.min(100, Math.round(daysSinceFundo / BULL_MID * 100));
+    cycleTotal = BULL_MID + ' dias (mid)';
+    cycleColor = '#4fd98a';
+  } else {
+    cyclePct   = Math.min(100, Math.round((daysSinceFundo - BULL_MID) / BEAR_MID * 100));
+    cycleTotal = BEAR_MID + ' dias (mid)';
+    cycleColor = '#f07070';
+  }
+  html += '<div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">';
+  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">fase concluída</div>';
+  html += '<div style="font-family:var(--mono);font-size:26px;font-weight:700;color:' + cycleColor + ';line-height:1;">' + cyclePct + '%</div>';
+  html += '<div style="height:3px;background:var(--border);border-radius:2px;margin:8px 0 3px;">';
+  html += '<div style="height:3px;width:' + cyclePct + '%;background:' + cycleColor + ';border-radius:2px;transition:width 1s ease;"></div></div>';
+  html += '<div style="font-size:9px;color:var(--muted);">ref. ' + cycleTotal + '</div>';
+  html += '</div>';
+
+  // Card 4: padrão histórico referência
+  html += '<div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">';
+  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">padrão histórico</div>';
+  html += '<div style="font-size:11px;color:#4fd98a;font-family:var(--mono);line-height:1.7;">Bull 1050–1100d<br><span style="color:#f09595;">Bear &nbsp;350–420d</span></div>';
+  html += '<div style="font-size:9px;color:var(--muted);margin-top:4px;">ciclos 3 e 4 · exatos</div>';
+  html += '</div>';
+
+  html += '</div>';
+
+  // ── insight note ─────────────────────────────────────────
+  var noteColor = isBull ? '#9fc865' : '#e08080';
+  var noteBg    = isBull ? '#071a10' : '#1a0808';
+  var noteBorder= isBull ? '#1d5e39' : '#5e1a1a';
+  var noteText;
+  if (isBull && !inZone)
+    noteText = 'Padrão histórico (ciclos 3 e 4): <strong style="color:var(--text)">1.064 dias exatos</strong> do fundo ao topo. Com margem ±25 dias: janela de topo em <strong style="color:#4fd98a">' + projTopMin + ' a ' + projTopMax + '</strong>. Quando o MVRV superar 3,5 dentro dessa janela, considere reduzir posição gradualmente.';
+  else if (isBull && inZone)
+    noteText = '<strong style="color:#4fd98a">Você está dentro da janela histórica de topo.</strong> Os ciclos 3 e 4 atingiram o pico entre o dia ' + BULL_MIN + ' e ' + BULL_MAX + '. Acompanhe o MVRV — acima de 3,5 é zona de distribuição ativa.';
+  else if (!isBull && !inZone)
+    noteText = 'Bear market em curso. Topo projetado em <strong style="color:var(--text)">' + fmtDateFull(projectedTopDate) + '</strong> (dia ' + BULL_MID + ' do fundo). Zona de fundo histórica: dia ' + (BULL_MID+BEAR_MIN) + ' ao ' + (BULL_MID+BEAR_MAX) + '. Janela: <strong style="color:#f09595">' + projFundoMin + ' a ' + projFundoMax + '</strong>.';
+  else
+    noteText = '<strong style="color:#f07070">Você está dentro da janela histórica de fundo.</strong> Acompanhe o MVRV — abaixo de 1,5 é zona de acumulação forte. Bear markets anteriores duraram entre ' + BEAR_MIN + ' e ' + BEAR_MAX + ' dias após o topo.';
+
+  html += '<div style="font-size:12px;color:' + noteColor + ';background:' + noteBg + ';border-radius:8px;padding:12px 16px;border:0.5px solid ' + noteBorder + ';line-height:1.7;">' + noteText + '</div>';
+
+  document.getElementById('cycle-card').innerHTML = html;
+}
+
+async function fetchPrice() {
+  var res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+  var json = await res.json();
+  return parseFloat(json.price);
+}
+
+// ──────────────────────────────────────────────
+//  MAIN FETCH
+// ──────────────────────────────────────────────
+async function fetchAll() {
+  document.getElementById('last-update').textContent = 'atualizando...';
+  try {
+    renderCyclePosition();
+    var price = await fetchPrice();
+    setEl('btc-price', fmtPrice(price));
+    await Promise.all([
+      fetchMVRV(),
+      fetchFundingRate(),
+      fetchOI(price)
+    ]);
+    prevPrice = price;
+    document.getElementById('last-update').textContent = 'atualizado ' + now();
+  } catch(e) {
+    document.getElementById('last-update').textContent = 'erro — tente novamente';
+    console.error(e);
+  }
+}
+
+// ──────────────────────────────────────────────
+//  INIT + AUTO-REFRESH
+// ──────────────────────────────────────────────
+fetchAll();
+setInterval(function() {
+  fetchFundingRate();
+  fetchPrice().then(function(p) {
+    setEl('btc-price', fmtPrice(p));
+    fetchOI(p).then(function() { prevPrice = p; });
+  });
+  document.getElementById('last-update').textContent = 'atualizado ' + now();
+}, 30000);
+</script>
+</body>
+</html>
