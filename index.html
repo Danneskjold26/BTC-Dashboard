@@ -1002,69 +1002,95 @@ function applyManualMVRV() {
 }
 
 async function fetchMVRV() {
-  // ── Fonte principal: data/mvrv.json atualizado pelo GitHub Action ──
-  // O arquivo é gerado automaticamente 1x por dia.
-  // Quando rodando localmente (file://), pula para o fallback de proxy.
-  var isGitHubPages = location.protocol === 'https:' || location.protocol === 'http:';
-
-  if (isGitHubPages) {
+  // ── Fonte 1: data/mvrv.json gerado pelo GitHub Action (1x/dia) ──────
+  var isServed = location.protocol === 'https:' || location.protocol === 'http:';
+  if (isServed) {
     try {
-      var r = await fetch('./data/mvrv.json', { signal: AbortSignal.timeout(6000) });
-      if (!r.ok) throw new Error('data file HTTP ' + r.status);
-      var j = await r.json();
-      if (j.mvrv && !isNaN(j.mvrv) && j.mvrv > 0) {
-        var updatedLabel = j.date ? 'Ref: ' + j.date + ' · ' + (j.source || 'GitHub Action') : '';
-        applyMVRV(j.mvrv, updatedLabel);
+      var r1 = await fetch('./data/mvrv.json?t=' + Date.now(), { signal: AbortSignal.timeout(6000) });
+      if (!r1.ok) throw new Error('HTTP ' + r1.status);
+      var j1 = await r1.json();
+      if (j1.mvrv && !isNaN(parseFloat(j1.mvrv)) && parseFloat(j1.mvrv) > 0.3) {
+        var src1 = j1.source || 'GitHub Action';
+        var note1 = j1.note ? ' ⚠' : '';
+        applyMVRV(parseFloat(j1.mvrv), 'Ref: ' + (j1.date || '') + ' · ' + src1 + note1);
         return;
       }
-      throw new Error('mvrv null or invalid in data file');
-    } catch(e) { console.warn('data/mvrv.json falhou:', e.message); }
+      // File exists but mvrv is null — Action hasn't succeeded yet
+      // Show "pending" state instead of crashing to manual input
+      if (j1.mvrv === null) {
+        setEl('mvrv-val', '<span style="color:var(--muted);font-size:18px;">atualizando...</span>');
+        setTxt('mvrv-sub', 'GitHub Action ainda não rodou. Aguarde até as 8h UTC ou dispare manualmente.');
+        document.getElementById('mvrv-pill').className = 'signal-pill pill-neu';
+        document.getElementById('mvrv-dot').className = 'signal-dot dot-neu';
+        setTxt('mvrv-signal', 'Aguardando atualização diária');
+        // Still try browser fallbacks below
+      }
+    } catch(e) { console.warn('data/mvrv.json:', e.message); }
   }
 
-  // ── Fallback 1: blockchain.info (funciona no browser, tem CORS liberado) ──
+  // ── Fonte 2: blockchain.info charts API (CORS liberado no browser) ──
   try {
     var r2 = await fetch(
       'https://api.blockchain.info/charts/mvrv?timespan=5days&sampled=false&format=json',
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (!r2.ok) throw new Error('HTTP ' + r2.status);
+    var j2 = await r2.json();
+    var vals2 = (j2.values || []).filter(function(v){ return v.y > 0; });
+    if (!vals2.length) throw new Error('empty');
+    var last2 = vals2[vals2.length - 1];
+    var mv2 = parseFloat(last2.y);
+    if (isNaN(mv2) || mv2 < 0.3 || mv2 > 15) throw new Error('value out of range: ' + mv2);
+    applyMVRV(mv2, 'Ref: ' + new Date(last2.x * 1000).toLocaleDateString('pt-BR') + ' · Blockchain.info');
+    return;
+  } catch(e) { console.warn('blockchain.info browser:', e.message); }
+
+  // ── Fonte 3: Calcular via blockchain.info market-cap + realized-cap ─
+  try {
+    var [rMkt, rReal] = await Promise.all([
+      fetch('https://api.blockchain.info/charts/market-cap?timespan=5days&sampled=false&format=json', { signal: AbortSignal.timeout(10000) }),
+      fetch('https://api.blockchain.info/charts/realized-cap?timespan=5days&sampled=false&format=json', { signal: AbortSignal.timeout(10000) })
+    ]);
+    if (!rMkt.ok || !rReal.ok) throw new Error('HTTP error');
+    var jMkt  = await rMkt.json();
+    var jReal = await rReal.json();
+    var mktVals  = (jMkt.values  || []).filter(function(v){ return v.y > 0; });
+    var realVals = (jReal.values || []).filter(function(v){ return v.y > 0; });
+    if (!mktVals.length || !realVals.length) throw new Error('empty');
+    var mv3 = mktVals[mktVals.length-1].y / realVals[realVals.length-1].y;
+    if (isNaN(mv3) || mv3 < 0.3 || mv3 > 15) throw new Error('value out of range: ' + mv3);
+    var d3 = new Date(mktVals[mktVals.length-1].x * 1000).toLocaleDateString('pt-BR');
+    applyMVRV(Math.round(mv3 * 1000) / 1000, 'Ref: ' + d3 + ' · Blockchain.info (calculado)');
+    return;
+  } catch(e) { console.warn('blockchain.info calculated:', e.message); }
+
+  // ── Fonte 4: CoinMetrics direto ──────────────────────────────────────
+  try {
+    var r4 = await fetch(
+      'https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=1',
       { signal: AbortSignal.timeout(8000) }
     );
-    if (!r2.ok) throw new Error('blockchain.info HTTP ' + r2.status);
-    var j2 = await r2.json();
-    var vals = j2.values || [];
-    if (!vals.length) throw new Error('empty values');
-    var last = vals[vals.length - 1];
-    var mvrv2 = parseFloat(last.y);
-    var date2 = new Date(last.x * 1000).toLocaleDateString('pt-BR');
-    if (isNaN(mvrv2) || mvrv2 <= 0) throw new Error('invalid value');
-    applyMVRV(mvrv2, 'Ref: ' + date2 + ' · Blockchain.info');
-    return;
-  } catch(e) { console.warn('blockchain.info falhou:', e.message); }
-
-  // ── Fallback 2: CoinMetrics direto ──────────────────────────────────
-  try {
-    var r3 = await fetch(
-      'https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=1',
-      { signal: AbortSignal.timeout(6000) }
-    );
-    if (!r3.ok) throw new Error('status ' + r3.status);
-    var j3 = await r3.json();
-    var row3 = j3.data[j3.data.length - 1];
-    var mvrv3 = parseFloat(row3.CapMrktCurUSD) / parseFloat(row3.CapRealUSD);
-    applyMVRV(mvrv3, 'Ref: ' + new Date(row3.time).toLocaleDateString('pt-BR') + ' · CoinMetrics');
-    return;
-  } catch(e) { console.warn('CoinMetrics falhou:', e.message); }
-
-  // ── Fallback 3: proxy CORS ───────────────────────────────────────────
-  try {
-    var proxy = 'https://corsproxy.io/?url=';
-    var target = encodeURIComponent('https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=1');
-    var r4 = await fetch(proxy + target, { signal: AbortSignal.timeout(8000) });
-    if (!r4.ok) throw new Error('proxy status ' + r4.status);
-    var j4 = await r4.json();
+    if (!r4.ok) throw new Error('HTTP ' + r4.status);
+    var j4   = await r4.json();
     var row4 = j4.data[j4.data.length - 1];
-    var mvrv4 = parseFloat(row4.CapMrktCurUSD) / parseFloat(row4.CapRealUSD);
-    applyMVRV(mvrv4, 'Ref: ' + new Date(row4.time).toLocaleDateString('pt-BR') + ' · CoinMetrics/proxy');
+    var mv4  = parseFloat(row4.CapMrktCurUSD) / parseFloat(row4.CapRealUSD);
+    if (isNaN(mv4) || mv4 < 0.3) throw new Error('invalid');
+    applyMVRV(Math.round(mv4 * 1000) / 1000, 'Ref: ' + new Date(row4.time).toLocaleDateString('pt-BR') + ' · CoinMetrics');
     return;
-  } catch(e) { console.warn('Proxy falhou:', e.message); }
+  } catch(e) { console.warn('CoinMetrics:', e.message); }
+
+  // ── Fonte 5: proxy CORS ──────────────────────────────────────────────
+  try {
+    var target5 = 'https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc&metrics=CapMrktCurUSD,CapRealUSD&frequency=1d&page_size=1';
+    var r5 = await fetch('https://corsproxy.io/?url=' + encodeURIComponent(target5), { signal: AbortSignal.timeout(10000) });
+    if (!r5.ok) throw new Error('HTTP ' + r5.status);
+    var j5   = await r5.json();
+    var row5 = j5.data[j5.data.length - 1];
+    var mv5  = parseFloat(row5.CapMrktCurUSD) / parseFloat(row5.CapRealUSD);
+    if (isNaN(mv5) || mv5 < 0.3) throw new Error('invalid');
+    applyMVRV(Math.round(mv5 * 1000) / 1000, 'Ref: ' + new Date(row5.time).toLocaleDateString('pt-BR') + ' · CoinMetrics/proxy');
+    return;
+  } catch(e) { console.warn('proxy:', e.message); }
 
   // ── Último recurso: input manual ─────────────────────────────────────
   showMVRVManualInput();
