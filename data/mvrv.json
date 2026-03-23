@@ -1,9 +1,6 @@
 {
-  "mvrv": 1.266,
-  "date": "2026-03-22",
-  "source": "Kraken VWAP 720d (calibrado)",
-  "updated": "2026-03-22T17:16:35Z",
-  "raw_vwap_mvrv": 0.817,
-  "calibration_factor": 1.549,
-  "note": "Calculado: (preco_atual/VWAP_720d) x 1.549. Calibrado em 2026-03-22. Verificar periodicamente em CheckOnChain."
+  "mvrv": 1.264,
+  "date": "2026-03-23",
+  "source": "BGeometrics (mvrv)",
+  "updated": "2026-03-23T11:10:04Z"
 }
