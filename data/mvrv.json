@@ -1,6 +1,7 @@
 {
-  "mvrv": 1.487,
-  "date": "2026-09-09",
-  "source": "BGeometrics (mvrv)",
-  "updated": "2026-09-09T12:37:56Z"
+  "mvrv": 1.391,
+  "date": "2026-09-10",
+  "source": "Kraken VWAP 720d (\u00d71.549)",
+  "updated": "2026-09-10T12:37:28Z",
+  "note": "raw_vwap_mvrv=0.898 \u00d7 1.549. Recalibrar se diferen\u00e7a do CheckOnChain > 0.15: novo_fator = checkonchain / 0.898"
 }
