@@ -1,158 +1,185 @@
 #!/usr/bin/env python3
 """
-Fetches Bitcoin MVRV ratio.
-Sources tried in order:
-  1. BGeometrics free API (multiple endpoint variants)
-  2. Kraken VWAP 720d × calibration factor
+Busca o MVRV do Bitcoin e salva em data/mvrv.json.
 
-CALIBRATION:
-  Factor = 1.549, calibrated on 2026-03-22 (VWAP=0.82, real=1.27)
-  Only needs updating when market transitions between major phases
-  (bottom → bull, bull → top, top → bear) — roughly once per year.
-  To recalibrate: open data/mvrv.json, check raw_vwap_mvrv field,
-  then set FACTOR = current_checkonchain_value / raw_vwap_mvrv
+Fonte principal: BGeometrics (MVRV on-chain real, plano gratuito).
+  - Usa o endpoint /last e confere a DATA do dado: se tiver mais de
+    MAX_AGE_DAYS dias, o valor é descartado (evita gravar dado velho como se fosse de hoje).
+
+Reserva: estimativa Kraken (preço / VWAP de 720 dias) × fator de calibração.
+  - O fator se calibra SOZINHO: todo dia em que a BGeometrics responde, o script
+    calcula fator = MVRV real ÷ estimativa crua e guarda no mvrv.json.
+    Se um dia a BGeometrics falhar, a estimativa usa esse último fator salvo.
+  - Opcional: a variável MVRV_CALIBRATION (GitHub → Settings → Secrets and
+    variables → Actions → Variables) força um fator manual.
 """
 
-import json, os, urllib.request, urllib.error
+import json, os, urllib.request
 from datetime import datetime, timezone
 
-TODAY   = datetime.now(timezone.utc).strftime('%Y-%m-%d')
-UPDATED = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
-OUTFILE = 'data/mvrv.json'
+NOW      = datetime.now(timezone.utc)
+TODAY    = NOW.strftime('%Y-%m-%d')
+UPDATED  = NOW.strftime('%Y-%m-%dT%H:%M:%SZ')
+OUTFILE  = 'data/mvrv.json'
+MAX_AGE_DAYS = 4
+DEFAULT_FACTOR = 1.549
 os.makedirs('data', exist_ok=True)
 
-# Fator de calibração: defina em GitHub → Settings → Secrets and variables →
-# Actions → aba "Variables" → MVRV_CALIBRATION. Assim dá para recalibrar sem
-# editar este arquivo. Fórmula: valor do CheckOnChain ÷ raw_vwap_mvrv (do mvrv.json).
-try:
-    CALIBRATION_FACTOR = float(os.environ.get('MVRV_CALIBRATION') or 1.549)
-except ValueError:
-    CALIBRATION_FACTOR = 1.549
+HEADERS = {'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)', 'Accept': 'application/json'}
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
-    'Accept': 'application/json',
-}
 
-def get(url, timeout=20):
+def get(url, timeout=25):
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode())
 
+
 def valid(v):
     try:
         return 0.3 < float(v) < 15
-    except:
+    except (TypeError, ValueError):
         return False
 
-def save(mvrv, source, note=None):
-    p = {'mvrv': round(float(mvrv), 3), 'date': TODAY,
-         'source': source, 'updated': UPDATED}
-    if note:
-        p['note'] = note
-    with open(OUTFILE, 'w') as f:
-        json.dump(p, f, indent=2)
-    print(f'SAVED: mvrv={p["mvrv"]} source={source}')
 
-
-# ── Source 1: BGeometrics free API (try multiple endpoint variants) ───────
-BGEOMETRICS_ENDPOINTS = [
-    'https://bitcoin-data.com/v1/mvrv-ratio',
-    'https://bitcoin-data.com/v1/mvrv_ratio',
-    'https://bitcoin-data.com/v1/mvrv',
-    'https://bitcoin-data.com/v2/mvrv-ratio',
-    'https://bitcoin-data.com/v2/mvrv',
-]
-print('Trying BGeometrics endpoints...')
-for url in BGEOMETRICS_ENDPOINTS:
+def load_previous():
     try:
-        d = get(url)
-        # Handle various response shapes
-        mvrv = None
-        if isinstance(d, list) and d:
-            last = d[-1]
-            raw = last[1] if isinstance(last, list) else last.get('v', last.get('value', last.get('mvrv')))
-            mvrv = float(raw) if raw is not None else None
-        elif isinstance(d, dict):
-            # Try common field names
-            for field in ['v', 'value', 'mvrv', 'mvrv_ratio', 'data']:
-                if field in d:
-                    val = d[field]
-                    if isinstance(val, list) and val:
-                        mvrv = float(val[-1]) if not isinstance(val[-1], dict) else float(val[-1].get('v', 0))
-                    elif isinstance(val, (int, float)):
-                        mvrv = float(val)
-                    break
-        if mvrv and valid(mvrv):
-            save(mvrv, f'BGeometrics ({url.split("/")[-1]})')
-            exit(0)
-        else:
-            print(f'  {url} → unexpected format or invalid value: {str(d)[:80]}')
-    except urllib.error.HTTPError as e:
-        print(f'  {url} → HTTP {e.code}')
-    except Exception as e:
-        print(f'  {url} → {e}')
+        with open(OUTFILE) as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
-# ── Source 2: Kraken VWAP 720d × calibration factor ──────────────────────
-print(f'\nTrying Kraken VWAP (calibration factor={CALIBRATION_FACTOR})...')
-try:
+def row_date(row):
+    """Extrai a data (YYYY-MM-DD) de uma linha da BGeometrics, em vários formatos possíveis."""
+    for k in ('d', 'date', 'day', 'theDay', 'time'):
+        v = row.get(k)
+        if isinstance(v, str) and len(v) >= 10:
+            return v[:10]
+    for k in ('unixTs', 'ts', 't', 'timestamp'):
+        v = row.get(k)
+        try:
+            v = float(v)
+            if v > 1e11:
+                v /= 1000
+            return datetime.fromtimestamp(v, tz=timezone.utc).strftime('%Y-%m-%d')
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def row_value(row):
+    for k in ('mvrv', 'mvrvRatio', 'mvrv_ratio', 'value', 'v'):
+        if k in row and valid(row[k]):
+            return float(row[k])
+    return None
+
+
+def fetch_bgeometrics():
+    """Retorna (mvrv, data) do dado MAIS RECENTE, ou levanta exceção."""
+    last_err = None
+    for url in ('https://bitcoin-data.com/v1/mvrv/last', 'https://bitcoin-data.com/v1/mvrv'):
+        try:
+            d = get(url)
+            rows = d
+            if isinstance(d, dict):
+                for k in ('content', 'data', 'results'):
+                    if isinstance(d.get(k), list):
+                        rows = d[k]
+                        break
+                else:
+                    rows = [d]
+            rows = [r for r in rows if isinstance(r, dict) and row_value(r) and row_date(r)]
+            if not rows:
+                raise ValueError(f'formato inesperado: {str(d)[:120]}')
+            newest = max(rows, key=row_date)          # não depende da ordem da lista
+            mvrv, date = row_value(newest), row_date(newest)
+            age = (NOW.date() - datetime.strptime(date, '%Y-%m-%d').date()).days
+            print(f'  {url} → mvrv={mvrv} data={date} ({age} dias)')
+            if age > MAX_AGE_DAYS:
+                raise ValueError(f'dado desatualizado ({date}, {age} dias)')
+            return mvrv, date
+        except Exception as e:
+            print(f'  {url} → falhou: {e}')
+            last_err = e
+    raise last_err
+
+
+def fetch_kraken_raw():
+    """Estimativa crua: preço atual / VWAP dos últimos ~720 dias (Kraken)."""
     d = get('https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=1440')
-    if d.get('error') and d['error']:
-        raise Exception(str(d['error']))
-    key = [k for k in d['result'].keys() if k != 'last'][0]
-    rows = d['result'][key]
-    # row: [time, open, high, low, close, vwap, volume, count]
-    candles = [(float(r[2]), float(r[3]), float(r[4]), float(r[6]))
-               for r in rows if float(r[6]) > 0]
-    if len(candles) < 100:
-        raise Exception(f'Too few candles: {len(candles)}')
+    if d.get('error'):
+        raise ValueError(str(d['error']))
+    key = [k for k in d['result'] if k != 'last'][0]
+    # linha: [time, open, high, low, close, vwap, volume, count]
+    rows = [r for r in d['result'][key] if float(r[6]) > 0]
+    if len(rows) < 100:
+        raise ValueError(f'poucos candles: {len(rows)}')
+    tpv = vol = 0.0
+    for r in rows:
+        h, l, c, v = float(r[2]), float(r[3]), float(r[4]), float(r[6])
+        tpv += (h + l + c) / 3 * v
+        vol += v
+    price = float(rows[-1][4])
+    raw = price / (tpv / vol)
+    print(f'  Kraken: {len(rows)} candles, preço ${price:,.0f}, estimativa crua {raw:.3f}')
+    return raw
 
-    total_vol = total_tpvol = 0.0
-    for h, l, c, v in candles:
-        tp = (h + l + c) / 3.0
-        total_tpvol += tp * v
-        total_vol   += v
-    if total_vol <= 0:
-        raise Exception('Zero volume')
 
-    vwap  = total_tpvol / total_vol
-    price = float(candles[-1][2])
-    raw   = price / vwap
-    mvrv  = raw * CALIBRATION_FACTOR
+def save(payload):
+    payload.setdefault('updated', UPDATED)
+    with open(OUTFILE, 'w') as f:
+        json.dump(payload, f, indent=2)
+    print('SALVO:', json.dumps(payload, ensure_ascii=False))
 
-    print(f'  Candles: {len(candles)} | Price: ${price:,.0f} | VWAP: ${vwap:,.0f}')
-    print(f'  Raw MVRV: {raw:.3f} | Calibrated: {mvrv:.3f}')
 
-    if not valid(mvrv):
-        raise Exception(f'Out of range: {mvrv}')
+prev = load_previous()
 
-    save(mvrv, f'Kraken VWAP 720d (×{CALIBRATION_FACTOR})',
-         note=f'raw_vwap_mvrv={round(raw,3)} × {CALIBRATION_FACTOR}. '
-              f'Recalibrar se diferença do CheckOnChain > 0.15: '
-              f'novo_fator = checkonchain / {round(raw,3)}')
-    exit(0)
-
+print('1) Estimativa Kraken (usada para calibrar e como reserva)...')
+try:
+    raw = fetch_kraken_raw()
 except Exception as e:
-    print(f'  Kraken failed: {e}')
+    print(f'  Kraken falhou: {e}')
+    raw = None
 
+print('2) MVRV real na BGeometrics...')
+try:
+    mvrv, date = fetch_bgeometrics()
+    payload = {'mvrv': round(mvrv, 3), 'date': date, 'source': 'BGeometrics (on-chain)'}
+    if raw:
+        payload['raw_vwap_mvrv'] = round(raw, 4)
+        payload['auto_calibration'] = round(mvrv / raw, 4)   # guardado para os dias em que a BGeometrics falhar
+    save(payload)
+    raise SystemExit(0)
+except SystemExit:
+    raise
+except Exception as e:
+    print(f'  BGeometrics indisponível: {e}')
 
-# ── Keep previous value ───────────────────────────────────────────────────
-print('All sources failed. Checking previous value...')
-if os.path.exists(OUTFILE):
-    try:
-        prev = json.load(open(OUTFILE))
-        if valid(prev.get('mvrv')):
-            prev['note'] = 'kept from previous run — all fetches failed today'
-            prev['updated'] = UPDATED
-            json.dump(prev, open(OUTFILE, 'w'), indent=2)
-            print(f"Kept previous mvrv={prev['mvrv']}")
-            exit(0)
-    except Exception as e:
-        print(f'  Could not read previous: {e}')
+print('3) Usando a estimativa Kraken calibrada...')
+manual = os.environ.get('MVRV_CALIBRATION', '').strip().replace(',', '.')
+try:
+    factor, origin = float(manual), 'manual (MVRV_CALIBRATION)'
+except ValueError:
+    if valid(prev.get('auto_calibration')):
+        factor, origin = float(prev['auto_calibration']), 'automática (último dia com BGeometrics)'
+    else:
+        factor, origin = DEFAULT_FACTOR, 'padrão (mar/2026)'
 
-print('No valid data — writing null')
-json.dump({'mvrv': None, 'date': TODAY,
-           'source': 'unavailable', 'updated': UPDATED},
-          open(OUTFILE, 'w'))
-exit(1)
+if raw and valid(raw * factor):
+    payload = {'mvrv': round(raw * factor, 3), 'date': TODAY,
+               'source': 'Estimativa Kraken calibrada', 'raw_vwap_mvrv': round(raw, 4),
+               'calibration_used': round(factor, 4), 'calibration_origin': origin}
+    if valid(prev.get('auto_calibration')):
+        payload['auto_calibration'] = prev['auto_calibration']
+    save(payload)
+    raise SystemExit(0)
+
+print('4) Tudo falhou — mantendo o valor anterior, marcado como antigo.')
+if valid(prev.get('mvrv')):
+    prev['note'] = 'valor mantido da última execução bem-sucedida'
+    prev['updated'] = UPDATED
+    save(prev)
+    raise SystemExit(0)
+
+save({'mvrv': None, 'date': TODAY, 'source': 'indisponível'})
+raise SystemExit(1)
