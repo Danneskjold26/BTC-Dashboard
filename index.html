@@ -662,7 +662,7 @@
     <div class="card">
       <div class="card-header">
         <span class="metric-name">MVRV Ratio</span>
-        <span class="source-badge">CoinMetrics</span>
+        <span class="source-badge">GitHub Action · diário</span>
       </div>
       <div class="metric-value" id="mvrv-val">
         <span class="loading">···</span>
@@ -879,7 +879,7 @@
 </main>
 
 <footer>
-  <p>Dados: MVRV via <b>CoinMetrics Community API</b> (atualização diária) · Funding Rate e Open Interest via <b>Binance Futures API</b> (tempo real) · Preço via <b>Binance Spot API</b>.</p>
+  <p>Dados: MVRV estimado diariamente por GitHub Action (Kraken VWAP calibrado) · Ciclo via histórico diário <b>Binance</b> · Funding Rate e Open Interest via <b>Binance Futures API</b> (tempo real) · Preço via <b>Binance Spot API</b>.</p>
   <p style="margin-top:4px;">Este dashboard é informativo. Não constitui recomendação de investimento.</p>
 </footer>
 
@@ -1431,289 +1431,282 @@ function updateGaugeIndicator(id, score, max, valTxt, lblTxt) {
 }
 
 // ──────────────────────────────────────────────
-//  CYCLE POSITION
-//  Fundo ciclo 5: 21 Nov 2022
-//  Bull range: 1050–1100 dias (mid 1075)
-//  Bear range:  350–420 dias (mid 385)
+//  CYCLE POSITION — derivado do histórico de preços
+//  Topo e mínima vêm do histórico diário da Binance, não de datas fixas.
+//  Topo confirmado: 120+ dias sem nova máxima e preço 30%+ abaixo dela.
+//  Fundo confirmado: 90+ dias sem nova mínima (e 200+ dias após o topo).
+//  Quando o fundo se confirma, o ciclo seguinte começa sozinho a partir dele.
 // ──────────────────────────────────────────────
-function renderCyclePosition() {
-  var FUNDO    = new Date('2022-11-21');
-  var BULL_MIN = 1050, BULL_MID = 1075, BULL_MAX = 1100;
-  var BEAR_MIN =  350, BEAR_MID =  385, BEAR_MAX =  420;
-  var today    = new Date();
-  var msDay    = 86400000;
-  var daysSinceFundo = Math.floor((today - FUNDO) / msDay);
+var CYCLE_CFG = {
+  lastBottom: '2022-11-21',      // último fundo confirmado (ponto de partida)
+  fallbackTop: '2025-10-06',     // usado só se o histórico não carregar
+  fallbackTopPrice: 126200,
+  BULL_MIN: 1050, BULL_MID: 1075, BULL_MAX: 1100,
+  BEAR_MIN: 350,  BEAR_MID: 385,  BEAR_MAX: 420,
+  TOP_CONFIRM_DAYS: 120, TOP_CONFIRM_DROP: 0.30,
+  LOW_CONFIRM_DAYS: 90
+};
+var DAY_MS = 86400000;
 
-  function addDays(d, n) { return new Date(d.getTime() + n * msDay); }
-  function fmtDateFull(d) { return d.toLocaleDateString('pt-BR', {day:'2-digit', month:'short', year:'numeric'}); }
+async function loadDailyHistory(fromMs) {
+  var out = [], t = fromMs;
+  for (var i = 0; i < 3; i++) {
+    var r = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=1000&startTime=' + t,
+                        { signal: AbortSignal.timeout(12000) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var j = await r.json();
+    if (!Array.isArray(j) || !j.length) break;
+    j.forEach(function(k) { out.push({ t: k[0], h: +k[2], l: +k[3], c: +k[4] }); });
+    if (j.length < 1000) break;
+    t = j[j.length - 1][0] + DAY_MS;
+  }
+  if (out.length < 30) throw new Error('histórico insuficiente');
+  return out;
+}
 
-  // ── helpers for the SVG timeline ────────────────────────
-  // Total timeline width in SVG units representing full cycle
-  // Bull: 0–BULL_MAX, Bear: BULL_MAX–(BULL_MAX+BEAR_MAX)
-  var TOTAL = BULL_MAX + BEAR_MAX;   // 1520
-  var W = 600; // SVG inner width
-  var H = 120;
+function analyzeCycle(hist) {
+  var now = Date.now();
+  var last = hist[hist.length - 1];
+  var bottom = { t: Date.parse(CYCLE_CFG.lastBottom), price: null };
+  for (var guard = 0; guard < 4; guard++) {
+    var seg = hist.filter(function(k) { return k.t >= bottom.t; });
+    if (bottom.price === null) bottom.price = seg[0].l;
+    var top = seg.reduce(function(a, k) { return k.h > a.h ? k : a; }, seg[0]);
+    var topConfirmed = (now - top.t) / DAY_MS >= CYCLE_CFG.TOP_CONFIRM_DAYS &&
+                       last.c <= top.h * (1 - CYCLE_CFG.TOP_CONFIRM_DROP);
+    if (!topConfirmed)
+      return { phase: 'bull', bottom: bottom, high: { t: top.t, price: top.h }, price: last.c };
+    var after = hist.filter(function(k) { return k.t > top.t; });
+    var low = after.reduce(function(a, k) { return k.l < a.l ? k : a; }, after[0]);
+    var lowConfirmed = (now - low.t) / DAY_MS >= CYCLE_CFG.LOW_CONFIRM_DAYS &&
+                       (low.t - top.t) / DAY_MS >= 200;
+    if (!lowConfirmed)
+      return { phase: 'bear', bottom: bottom, top: { t: top.t, price: top.h },
+               low: { t: low.t, price: low.l }, price: last.c };
+    bottom = { t: low.t, price: low.l };   // fundo confirmado → novo ciclo
+  }
+  return { phase: 'bull', bottom: bottom, high: null, price: last.c };
+}
 
-  function xOf(day) { return Math.round(day / TOTAL * W); }
+async function renderCyclePosition() {
+  var cyc, fromData = true;
+  try {
+    var hist = await loadDailyHistory(Date.parse(CYCLE_CFG.lastBottom));
+    cyc = analyzeCycle(hist);
+  } catch (e) {
+    console.warn('[ciclo] histórico indisponível, usando datas fixas:', e.message);
+    fromData = false;
+    cyc = { phase: 'bear', bottom: { t: Date.parse(CYCLE_CFG.lastBottom), price: null },
+            top: { t: Date.parse(CYCLE_CFG.fallbackTop), price: CYCLE_CFG.fallbackTopPrice },
+            low: null, price: null };
+  }
+  drawCycleCard(cyc, fromData);
+}
 
-  var isBull = daysSinceFundo < BULL_MAX;
-  var inZone, daysSinceTop, cycleScore;
-
-  if (isBull) {
-    inZone = daysSinceFundo >= BULL_MIN;
-    cycleScore = inZone ? -3 : (daysSinceFundo > BULL_MID * 0.75 ? -1 : (daysSinceFundo > BULL_MID * 0.4 ? +1 : +2));
-    updateGaugeIndicator('cycle', cycleScore, 3, daysSinceFundo + 'd', inZone ? 'zona de topo' : 'fase de alta');
-  } else {
-    daysSinceTop = daysSinceFundo - BULL_MID;
-    inZone = daysSinceTop >= BEAR_MIN;
-    var cs2 = inZone ? +3 : (daysSinceTop > BEAR_MID * 0.5 ? +2 : (daysSinceTop > BEAR_MID * 0.2 ? +1 : -1));
-    updateGaugeIndicator('cycle', cs2, 3, daysSinceTop + 'd bear', inZone ? 'zona de fundo' : 'bear market');
+function drawCycleCard(cyc, fromData) {
+  var C = CYCLE_CFG, now = Date.now();
+  var isBull = cyc.phase === 'bull';
+  var daysSinceBottom = Math.floor((now - cyc.bottom.t) / DAY_MS);
+  function addD(t, n) { return t + n * DAY_MS; }
+  // candles diários são em UTC — formatar em UTC evita mostrar o dia anterior no fuso de Brasília
+  var MES = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+  function fD(t) { var d = new Date(t); return ('0' + d.getUTCDate()).slice(-2) + '/' + MES[d.getUTCMonth()] + '/' + String(d.getUTCFullYear()).slice(2); }
+  function fM(t) { var d = new Date(t); return MES[d.getUTCMonth()] + '/' + String(d.getUTCFullYear()).slice(2); }
+  function fToday() { var d = new Date(); return ('0' + d.getDate()).slice(-2) + '/' + MES[d.getMonth()] + '/' + String(d.getFullYear()).slice(2); }
+  function fK(p) {
+    if (!p) return '—';
+    return '$' + (p >= 100000 ? Math.round(p / 1000) + 'k' : p >= 1000 ? (p / 1000).toFixed(1).replace('.', ',') + 'k' : Math.round(p));
   }
 
-  // ── derived values ───────────────────────────────────────
-  var projTopMin  = fmtDateFull(addDays(FUNDO, BULL_MIN));
-  var projTopMax  = fmtDateFull(addDays(FUNDO, BULL_MAX));
-  var projectedTopDate = addDays(FUNDO, BULL_MID);
-  var projFundoMin = fmtDateFull(addDays(projectedTopDate, BEAR_MIN));
-  var projFundoMax = fmtDateFull(addDays(projectedTopDate, BEAR_MAX));
+  var GREEN = '#4fd98a', LGREEN = '#97C459', RED = '#f07070', LRED = '#f09595', AMBER = '#f0a840';
 
-  var toTopMin  = Math.max(0, BULL_MIN - daysSinceFundo);
-  var toTopMax  = Math.max(0, BULL_MAX - daysSinceFundo);
-  var toFundoMin = isBull ? null : Math.max(0, BEAR_MIN - (daysSinceFundo - BULL_MID));
-  var toFundoMax = isBull ? null : Math.max(0, BEAR_MAX - (daysSinceFundo - BULL_MID));
+  // ── state + score ─────────────────────────────────────
+  var state, score, scoreLbl, t = null, topT;
+  if (isBull) {
+    topT = addD(cyc.bottom.t, C.BULL_MID);           // topo projetado
+    if (daysSinceBottom > C.BULL_MAX)       { state = 'bull-late'; score = -3; scoreLbl = 'topo atrasado'; }
+    else if (daysSinceBottom >= C.BULL_MIN) { state = 'topzone';   score = -3; scoreLbl = 'zona de topo'; }
+    else { state = 'bull'; score = daysSinceBottom > C.BULL_MID * 0.75 ? -1 : daysSinceBottom > C.BULL_MID * 0.4 ? 1 : 2; scoreLbl = 'fase de alta'; }
+    updateGaugeIndicator('cycle', score, 3, daysSinceBottom + 'd', scoreLbl);
+  } else {
+    topT = cyc.top.t;
+    t = Math.floor((now - topT) / DAY_MS);
+    if (t > C.BEAR_MAX)       { state = 'bottom-late'; score = 2; scoreLbl = 'janela expirada'; }
+    else if (t >= C.BEAR_MIN) { state = 'bottomzone';  score = 3; scoreLbl = 'zona de fundo'; }
+    else { state = 'bear'; score = t > C.BEAR_MID * 0.5 ? 2 : t > C.BEAR_MID * 0.2 ? 1 : -1; scoreLbl = 'bear market'; }
+    updateGaugeIndicator('cycle', score, 3, t + 'd bear', scoreLbl);
+  }
+  var inZone = state === 'topzone' || state === 'bottomzone';
 
-  // Current day position on the full timeline
-  var curDay  = isBull ? daysSinceFundo : BULL_MID + (daysSinceFundo - BULL_MID);
-  var curX    = xOf(Math.min(curDay, TOTAL - 2));
+  var phaseLabel = {
+    'bull': 'Fase de alta — bull market', 'topzone': 'Fase de alta — zona de topo',
+    'bull-late': 'Fase de alta — além da janela de topo', 'bear': 'Fase de baixa — bear market',
+    'bottomzone': 'Fase de baixa — zona de fundo', 'bottom-late': 'Fase de baixa — janela de fundo expirada'
+  }[state];
+  var phaseColor = isBull ? (inZone ? GREEN : LGREEN) : (inZone ? RED : LRED);
+  var curCol = phaseColor;
 
-  // Key x positions
-  var xFundo  = xOf(0);
-  var xTopMin = xOf(BULL_MIN);
-  var xTopMid = xOf(BULL_MID);
-  var xTopMax = xOf(BULL_MAX);
-  var xFundoMin2 = xOf(BULL_MID + BEAR_MIN);
-  var xFundoMax2 = xOf(BULL_MID + BEAR_MAX);
-  var xEnd    = xOf(TOTAL);
+  // ── timeline geometry ─────────────────────────────────
+  var ox = 20, W = 600, trackY = 54;
+  var start = cyc.bottom.t;
+  var end = Math.max(addD(topT, C.BEAR_MAX + 60), addD(now, 90));
+  function X(ts) { return Math.round(ox + Math.max(0, Math.min(1, (ts - start) / (end - start))) * W); }
 
-  // Colors
-  var bullCol  = '#1a7a4a';
-  var zoneCol  = isBull ? '#4fd98a' : '#f07070';
-  var bearCol  = '#791F1F';
-  var curCol   = isBull ? (inZone ? '#4fd98a' : '#97C459') : (inZone ? '#f07070' : '#f09595');
-  var bgTrack  = '#111521';
-
-  // ── build card HTML ─────────────────────────────────────
-  var phaseLabel = isBull
-    ? (inZone ? 'Fase de alta — zona de topo' : 'Fase de alta — bull market')
-    : (inZone ? 'Fase de baixa — zona de fundo' : 'Fase de baixa — bear market');
-  var phaseColor = isBull ? (inZone ? '#4fd98a' : '#97C459') : (inZone ? '#f07070' : '#f09595');
+  var xTop = X(topT), xNow = X(now), xEnd = ox + W;
+  var tzA = X(addD(cyc.bottom.t, C.BULL_MIN)), tzB = X(addD(cyc.bottom.t, C.BULL_MAX));
+  var bzA = X(addD(topT, C.BEAR_MIN)),         bzB = X(addD(topT, C.BEAR_MAX));
 
   var html = '';
 
-  // ── header row ──────────────────────────────────────────
-  html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;">';
+  // header
+  var topDayNum = isBull ? null : Math.round((topT - cyc.bottom.t) / DAY_MS);
+  var topHit = topDayNum !== null && topDayNum >= C.BULL_MIN - 15 && topDayNum <= C.BULL_MAX + 15;
+  html += '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">';
   html += '<div>';
-  html += '<div style="font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;">Posição no ciclo histórico (padrão 1064 / 364 dias)</div>';
+  html += '<div style="font-size:11px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;">Posição no ciclo · padrão fundo→topo 1050–1100d · topo→fundo 350–420d</div>';
   html += '<div style="font-size:20px;font-weight:500;color:' + phaseColor + ';">' + phaseLabel + '</div>';
+  if (!fromData) html += '<div style="font-size:11px;color:' + AMBER + ';margin-top:4px;">Histórico de preço indisponível agora — usando datas fixas.</div>';
   html += '</div>';
-  if (inZone) {
-    var zoneTxt = isBull ? 'ZONA DE TOPO' : 'ZONA DE FUNDO';
-    var zoneBg  = isBull ? '#071a10' : '#200808';
-    var zoneB   = isBull ? '#1d5e39' : '#5e1a1a';
-    html += '<div style="font-size:11px;font-weight:500;padding:6px 14px;border-radius:8px;background:' + zoneBg + ';color:' + zoneCol + ';border:0.5px solid ' + zoneB + ';letter-spacing:.06em;">' + zoneTxt + '</div>';
+  if (topDayNum !== null) {
+    var chipCol = topHit ? GREEN : AMBER;
+    html += '<div style="font-size:11px;padding:6px 12px;border-radius:8px;border:0.5px solid ' + chipCol + '55;color:' + chipCol + ';font-family:var(--mono);">' +
+            'topo deste ciclo: dia ' + topDayNum + (topHit ? ' ✓ no padrão' : ' · fora do padrão') + '</div>';
   }
   html += '</div>';
 
-  // ── SVG timeline ────────────────────────────────────────
+  // ── SVG ───────────────────────────────────────────────
   html += '<div style="margin-bottom:22px;overflow:hidden;">';
+  html += '<svg width="100%" viewBox="0 0 ' + (W + 40) + ' 150" style="display:block;">';
 
-  // ── Date ruler: compute real dates for key milestones ──────────────────
-  function msToLabel(d) {
-    return d.toLocaleDateString('pt-BR', {month:'short', year:'2-digit'});
+  // ruler: tick every January and July
+  html += '<line x1="' + ox + '" y1="22" x2="' + xEnd + '" y2="22" stroke="#1e2235" stroke-width="0.5"/>';
+  var d0 = new Date(start); var m = new Date(Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() < 6 ? 6 : 12, 1));
+  while (m.getTime() < end) {
+    var rx = X(m.getTime()), isJan = m.getUTCMonth() === 0;
+    if (Math.abs(rx - xNow) > 28) {
+      html += '<line x1="' + rx + '" y1="18" x2="' + rx + '" y2="26" stroke="#5a6080" stroke-width="' + (isJan ? 1 : 0.6) + '" opacity=".7"/>';
+      html += '<text x="' + rx + '" y="13" text-anchor="middle" font-size="7.5" fill="' + (isJan ? '#8090b0' : '#5a6080') + '" font-family="monospace">' + fM(m.getTime()) + '</text>';
+    }
+    m = new Date(Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 6, 1));
+  }
+  html += '<line x1="' + xNow + '" y1="15" x2="' + xNow + '" y2="27" stroke="' + curCol + '" stroke-width="2"/>';
+  html += '<text x="' + xNow + '" y="10" text-anchor="middle" font-size="7.5" fill="' + curCol + '" font-family="monospace" font-weight="600">' + fToday() + '</text>';
+
+  // track: bull then bear
+  html += '<rect x="' + ox + '" y="' + trackY + '" width="' + W + '" height="20" rx="10" fill="#111521"/>';
+  html += '<rect x="' + ox + '" y="' + trackY + '" width="' + (xTop - ox) + '" height="20" rx="10" fill="#1a7a4a" opacity=".35"/>';
+  html += '<rect x="' + xTop + '" y="' + trackY + '" width="' + (xEnd - xTop) + '" height="20" fill="#791F1F" opacity=".3"/>';
+
+  // windows
+  html += '<rect x="' + tzA + '" y="' + (trackY - 4) + '" width="' + Math.max(3, tzB - tzA) + '" height="28" rx="4" fill="' + GREEN + '" fill-opacity=".15" stroke="' + GREEN + '" stroke-opacity=".5" stroke-width="0.5"/>';
+  html += '<rect x="' + bzA + '" y="' + (trackY - 4) + '" width="' + Math.max(3, bzB - bzA) + '" height="28" rx="4" fill="' + RED + '" fill-opacity=".12" stroke="' + RED + '" stroke-opacity=".5" stroke-width="0.5"/>';
+
+  // real top marker
+  if (!isBull) {
+    html += '<polygon points="' + xTop + ',' + (trackY - 8) + ' ' + (xTop - 5) + ',' + (trackY - 15) + ' ' + (xTop + 5) + ',' + (trackY - 15) + '" fill="' + GREEN + '"/>';
+  }
+  // provisional low marker
+  if (!isBull && cyc.low) {
+    var xL = X(cyc.low.t);
+    html += '<rect x="' + (xL - 3.5) + '" y="' + (trackY + 6.5) + '" width="7" height="7" transform="rotate(45 ' + xL + ' ' + (trackY + 10) + ')" fill="none" stroke="' + AMBER + '" stroke-width="1.5"/>';
   }
 
-  // Key anchor dates
-  var dFundo     = new Date('2022-11-21');
-  var dHalving   = new Date('2024-04-19');   // BTC halving
-  var dTopMin    = addDays(dFundo, BULL_MIN); // Oct 2025
-  var dTopMid    = addDays(dFundo, BULL_MID);
-  var dTopMax    = addDays(dFundo, BULL_MAX);
-  var dBearMin   = addDays(dTopMid, BEAR_MIN);
-  var dBearMax   = addDays(dTopMid, BEAR_MAX);
+  // phase labels on track
+  if (xTop - ox > 120)
+    html += '<text x="' + Math.round((ox + xTop) / 2) + '" y="' + (trackY + 13) + '" text-anchor="middle" font-size="8" fill="' + GREEN + '" font-family="monospace" opacity=".7">bull market</text>';
 
-  // Compute X for any date on the timeline
-  function xDate(d) {
-    var days = Math.floor((d - dFundo) / msDay);
-    return ox + xOf(Math.max(0, Math.min(days, TOTAL)));
+  // today marker
+  html += '<line x1="' + xNow + '" y1="' + (trackY - 6) + '" x2="' + xNow + '" y2="' + (trackY + 26) + '" stroke="' + curCol + '" stroke-width="2" stroke-linecap="round"/>';
+  html += '<circle cx="' + xNow + '" cy="' + (trackY + 10) + '" r="10" fill="' + curCol + '" opacity=".2"/>';
+  html += '<circle cx="' + xNow + '" cy="' + (trackY + 10) + '" r="5" fill="' + curCol + '"/>';
+  html += '<text x="' + xNow + '" y="' + (trackY - 12) + '" text-anchor="middle" font-size="8" fill="' + curCol + '" font-family="monospace" font-weight="600">HOJE</text>';
+
+  // labels under track (row 1 + row 2)
+  var y1 = trackY + 38, y2 = trackY + 48;
+  function lbl(x, a, b, col, anchor) {
+    anchor = anchor || 'middle';
+    return '<text x="' + x + '" y="' + y1 + '" text-anchor="' + anchor + '" font-size="8.5" fill="' + col + '" font-family="monospace">' + a + '</text>' +
+           '<text x="' + x + '" y="' + y2 + '" text-anchor="' + anchor + '" font-size="7.5" fill="' + col + '" font-family="monospace" opacity=".7">' + b + '</text>';
   }
+  html += lbl(ox, 'fundo ' + fK(cyc.bottom.price), fD(cyc.bottom.t), '#8090b0', 'start');
+  if (isBull) html += lbl(Math.round((tzA + tzB) / 2), 'janela de topo', fD(addD(cyc.bottom.t, C.BULL_MIN)) + '–' + fM(addD(cyc.bottom.t, C.BULL_MAX)), GREEN);
+  else        html += lbl(xTop, 'topo ' + fK(cyc.top.price), fD(cyc.top.t), GREEN);
+  html += lbl(Math.round((bzA + bzB) / 2), 'janela de fundo', fD(addD(topT, C.BEAR_MIN)) + '–' + fD(addD(topT, C.BEAR_MAX)), RED);
 
-  // SVG height: extra 32px on top for date ruler
-  var svgH = H + 42;
-  var trackY = 54;   // push track down to make room for ruler
+  // row 3: today detail
+  var tAnchor = xNow > xEnd - 60 ? 'end' : xNow < ox + 60 ? 'start' : 'middle';
+  var todayTxt = isBull ? 'dia ' + daysSinceBottom + ' do bull' : 'dia ' + t + ' do bear';
+  html += '<text x="' + xNow + '" y="' + (trackY + 66) + '" text-anchor="' + tAnchor + '" font-size="8" fill="' + curCol + '" font-family="monospace">' + todayTxt + '</text>';
+  if (!isBull && cyc.low)
+    html += '<text x="' + xNow + '" y="' + (trackY + 77) + '" text-anchor="' + tAnchor + '" font-size="7.5" fill="' + AMBER + '" font-family="monospace">◇ mínima do ciclo ' + fK(cyc.low.price) + '</text>';
 
-  html += '<svg width="100%" viewBox="0 0 ' + (W+40) + ' ' + svgH + '" style="display:block;">';
+  html += '</svg></div>';
 
-  var ox = 20;
+  // ── stat cards ────────────────────────────────────────
+  function card(title, value, valCol, sub1, sub2, hl) {
+    var bg = hl ? (isBull ? '#071a10' : '#200808') : 'var(--bg3)';
+    var bd = hl ? (isBull ? '#1d5e39' : '#5e1a1a') : 'var(--border)';
+    return '<div style="background:' + bg + ';border-radius:10px;padding:13px 14px;border:0.5px solid ' + bd + ';">' +
+      '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">' + title + '</div>' +
+      '<div style="font-family:var(--mono);font-size:22px;font-weight:700;color:' + valCol + ';line-height:1.1;">' + value + '</div>' +
+      (sub1 ? '<div style="font-size:10px;color:' + valCol + ';opacity:.85;margin-top:4px;">' + sub1 + '</div>' : '') +
+      (sub2 ? '<div style="font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.4;">' + sub2 + '</div>' : '') +
+      '</div>';
+  }
+  var cards = [];
+  var price = cyc.price;
 
-  // ── Date ruler ticks and labels ──────────────────────────────────────
-  // Define key dates to label
-  var ruleDates = [
-    { d: dFundo,   label: 'Nov 22',   col: '#5a6080',  bold: false },
-    { d: new Date('2023-06-01'), label: 'Jun 23', col: '#3a4060', bold: false },
-    { d: dHalving, label: 'Halving Abr 24', col: '#f0a840', bold: true  },
-    { d: new Date('2025-01-01'), label: 'Jan 25', col: '#3a4060', bold: false },
-    { d: dTopMin,  label: 'Out 25',   col: '#4fd98a',  bold: true  },
-    { d: dTopMax,  label: 'Nov 25',   col: '#4fd98a',  bold: false },
-    { d: new Date('2026-04-01'), label: 'Abr 26', col: '#3a4060', bold: false },
-    { d: dBearMin, label: 'Set 26',   col: '#f07070',  bold: true  },
-    { d: dBearMax, label: 'Nov 26',   col: '#f07070',  bold: false },
-  ];
-
-  // Ruler baseline
-  html += '<line x1="' + ox + '" y1="22" x2="' + (ox+W) + '" y2="22" stroke="#1e2235" stroke-width="0.5"/>';
-
-  ruleDates.forEach(function(rd) {
-    var rx = xDate(rd.d);
-    if (rx < ox || rx > ox + W) return;
-    // tick
-    html += '<line x1="' + rx + '" y1="18" x2="' + rx + '" y2="26" stroke="' + rd.col + '" stroke-width="' + (rd.bold ? '1.5' : '0.8') + '" opacity=".7"/>';
-    html += '<text x="' + rx + '" y="13" text-anchor="middle" font-size="7.5" fill="' + rd.col + '" font-family="monospace" font-weight="' + (rd.bold ? '600' : '400') + '" opacity=".9">' + rd.label + '</text>';
-  });
-
-  // "Today" date on ruler
-  var todayX = ox + curX;
-  html += '<line x1="' + todayX + '" y1="16" x2="' + todayX + '" y2="26" stroke="' + curCol + '" stroke-width="2" opacity=".9"/>';
-  html += '<text x="' + todayX + '" y="8" text-anchor="middle" font-size="7" fill="' + curCol + '" font-family="monospace" font-weight="600">' + today.toLocaleDateString('pt-BR', {day:'2-digit', month:'short', year:'2-digit'}) + '</text>';
-
-  // ── Background track (shifted down) ──────────────────────────────────
-  html += '<rect x="' + ox + '" y="' + trackY + '" width="' + W + '" height="20" rx="10" fill="' + bgTrack + '"/>';
-
-  // Bull zone fill
-  html += '<rect x="' + (ox+xFundo) + '" y="' + trackY + '" width="' + xTopMax + '" height="20" rx="10" fill="' + bullCol + '" opacity=".35"/>';
-
-  // Bear zone fill
-  html += '<rect x="' + (ox+xTopMax) + '" y="' + trackY + '" width="' + (xEnd-xTopMax) + '" height="20" rx="0" fill="' + bearCol + '" opacity=".3"/>';
-  html += '<rect x="' + (ox+xEnd-10) + '" y="' + trackY + '" width="10" height="20" rx="0" fill="' + bearCol + '" opacity=".3"/>';
-
-  // Topo zone highlight
-  html += '<rect x="' + (ox+xTopMin) + '" y="' + (trackY-4) + '" width="' + (xTopMax-xTopMin) + '" height="28" rx="4" fill="#4fd98a" opacity=".18"/>';
-  html += '<rect x="' + (ox+xTopMin) + '" y="' + (trackY-4) + '" width="' + (xTopMax-xTopMin) + '" height="28" rx="4" fill="none" stroke="#4fd98a" stroke-width="0.5" opacity=".5"/>';
-
-  // Fundo zone 2 highlight
-  html += '<rect x="' + (ox+xFundoMin2) + '" y="' + (trackY-4) + '" width="' + (xFundoMax2-xFundoMin2) + '" height="28" rx="4" fill="#f07070" opacity=".12"/>';
-  html += '<rect x="' + (ox+xFundoMin2) + '" y="' + (trackY-4) + '" width="' + (xFundoMax2-xFundoMin2) + '" height="28" rx="4" fill="none" stroke="#f07070" stroke-width="0.5" opacity=".4"/>';
-
-  // Current position marker
-  html += '<line x1="' + (ox+curX) + '" y1="' + (trackY-6) + '" x2="' + (ox+curX) + '" y2="' + (trackY+26) + '" stroke="' + curCol + '" stroke-width="2" stroke-linecap="round"/>';
-  html += '<circle cx="' + (ox+curX) + '" cy="' + (trackY+10) + '" r="6" fill="' + curCol + '"/>';
-  html += '<circle cx="' + (ox+curX) + '" cy="' + (trackY+10) + '" r="10" fill="' + curCol + '" opacity=".2"/>';
-
-  // HOJE label above marker
-  html += '<text x="' + (ox+curX) + '" y="' + (trackY-10) + '" text-anchor="middle" font-size="8" fill="' + curCol + '" font-family="monospace" font-weight="600">HOJE</text>';
-
-  // ── Labels below track ───────────────────────────────────────────────
-  var labelY1 = trackY + 34;
-  var labelY2 = trackY + 43;
-
-  // Fundo
-  html += '<text x="' + (ox+xFundo) + '" y="' + labelY1 + '" text-anchor="middle" font-size="8.5" fill="#5a6080" font-family="monospace">Fundo</text>';
-  html += '<text x="' + (ox+xFundo) + '" y="' + labelY2 + '" text-anchor="middle" font-size="8" fill="#3a4060" font-family="monospace">Nov 2022</text>';
-
-  // Top zone
-  var xTopLabelX = ox + xTopMin + Math.round((xTopMax-xTopMin)/2);
-  html += '<text x="' + xTopLabelX + '" y="' + labelY1 + '" text-anchor="middle" font-size="8.5" fill="#4fd98a" font-family="monospace" opacity=".8">zona topo</text>';
-  html += '<text x="' + xTopLabelX + '" y="' + labelY2 + '" text-anchor="middle" font-size="7.5" fill="#4fd98a" font-family="monospace" opacity=".6">' + dTopMin.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}) + '–' + dTopMax.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}) + '</text>';
-
-  // Fundo zone 2
-  var xFundoLabelX = ox + xFundoMin2 + Math.round((xFundoMax2-xFundoMin2)/2);
-  html += '<text x="' + xFundoLabelX + '" y="' + labelY1 + '" text-anchor="middle" font-size="8.5" fill="#f07070" font-family="monospace" opacity=".8">zona fundo</text>';
-  html += '<text x="' + xFundoLabelX + '" y="' + labelY2 + '" text-anchor="middle" font-size="7.5" fill="#f07070" font-family="monospace" opacity=".6">' + dBearMin.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}) + '–' + dBearMax.toLocaleDateString('pt-BR',{month:'short',year:'2-digit'}) + '</text>';
-
-  // Phase labels on track
-  var xBullMid = ox + Math.round(xTopMax / 2);
-  html += '<text x="' + xBullMid + '" y="' + (trackY+13) + '" text-anchor="middle" font-size="8" fill="#4fd98a" font-family="monospace" opacity=".7">bull market ' + BULL_MAX + 'd</text>';
-
-  var xBearMid = ox + xTopMax + Math.round((xEnd - xTopMax) / 2);
-  html += '<text x="' + xBearMid + '" y="' + (trackY+13) + '" text-anchor="middle" font-size="8" fill="#f09595" font-family="monospace" opacity=".7">bear ' + BEAR_MAX + 'd</text>';
-
-  // Current day number below marker
-  html += '<text x="' + (ox+curX) + '" y="' + (trackY+56) + '" text-anchor="middle" font-size="8" fill="' + curCol + '" font-family="monospace" opacity=".9">dia ' + daysSinceFundo + '</text>';
-
-  html += '</svg>';
-  html += '</div>';
-
-  // ── stats row ────────────────────────────────────────────
-  html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px;">';
-
-  // Card 1: dias no ciclo
-  var dLabel = isBull ? 'dias de bull' : 'dias de bear';
-  var dVal   = isBull ? daysSinceFundo : (daysSinceFundo - BULL_MID);
-  var dColor = isBull ? '#4fd98a' : '#f07070';
-  html += '<div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">';
-  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">dias no ciclo</div>';
-  html += '<div style="font-family:var(--mono);font-size:26px;font-weight:700;color:' + dColor + ';line-height:1;">' + dVal + '</div>';
-  html += '<div style="font-size:10px;color:var(--muted);margin-top:3px;">' + dLabel + '</div>';
-  html += '</div>';
-
-  // Card 2: dias para próxima zona
-  var d2Val, d2Label, d2Color, d2Sub;
-  if (isBull && !inZone)      { d2Val = toTopMin + '–' + toTopMax; d2Label = 'dias p/ zona de topo'; d2Color = '#97C459'; d2Sub = projTopMin + ' a ' + projTopMax; }
-  else if (isBull && inZone)  { d2Val = 'AGORA'; d2Label = 'zona de topo ativa'; d2Color = '#4fd98a'; d2Sub = 'MVRV > 3,5 → distribuir'; }
-  else if (!isBull && !inZone){ d2Val = (toFundoMin) + '–' + (toFundoMax); d2Label = 'dias p/ zona de fundo'; d2Color = '#f09595'; d2Sub = projFundoMin + ' a ' + projFundoMax; }
-  else                        { d2Val = 'AGORA'; d2Label = 'zona de fundo ativa'; d2Color = '#f07070'; d2Sub = 'MVRV < 1,5 → acumular'; }
-
-  var d2Bg = inZone ? (isBull ? '#071a10' : '#200808') : 'var(--bg3)';
-  var d2Border = inZone ? (isBull ? '0.5px solid #1d5e39' : '0.5px solid #5e1a1a') : '0.5px solid var(--border)';
-  html += '<div style="background:' + d2Bg + ';border-radius:10px;padding:13px 14px;border:' + d2Border + ';">';
-  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">próxima zona</div>';
-  html += '<div style="font-family:var(--mono);font-size:' + (inZone ? '18px' : '20px') + ';font-weight:700;color:' + d2Color + ';line-height:1;">' + d2Val + '</div>';
-  html += '<div style="font-size:10px;color:' + d2Color + ';margin-top:3px;opacity:.8;">' + d2Label + '</div>';
-  if (d2Sub) html += '<div style="font-size:9px;color:var(--muted);margin-top:3px;">' + d2Sub + '</div>';
-  html += '</div>';
-
-  // Card 3: % do ciclo concluído
-  var cyclePct, cycleTotal, cycleColor;
   if (isBull) {
-    cyclePct   = Math.min(100, Math.round(daysSinceFundo / BULL_MID * 100));
-    cycleTotal = BULL_MID + ' dias (mid)';
-    cycleColor = '#4fd98a';
+    cards.push(card('dias desde o fundo', daysSinceBottom, GREEN, 'fundo em ' + fD(cyc.bottom.t), null));
+    var wTxt, wSub, w1 = addD(cyc.bottom.t, C.BULL_MIN), w2 = addD(cyc.bottom.t, C.BULL_MAX);
+    if (state === 'bull')         { wTxt = (C.BULL_MIN - daysSinceBottom) + ' d'; wSub = 'até abrir a janela de topo'; }
+    else if (state === 'topzone') { wTxt = (C.BULL_MAX - daysSinceBottom) + ' d'; wSub = 'até fechar a janela de topo'; }
+    else                          { wTxt = '+' + (daysSinceBottom - C.BULL_MAX) + ' d'; wSub = 'além da janela de topo'; }
+    cards.push(card('janela de topo', wTxt, inZone ? GREEN : LGREEN, wSub, fD(w1) + ' a ' + fD(w2), inZone));
+    var gain = price && cyc.bottom.price ? (price / cyc.bottom.price - 1) * 100 : null;
+    cards.push(card('alta desde o fundo', gain !== null ? '+' + Math.round(gain) + '%' : '—', GREEN,
+                    fK(cyc.bottom.price) + ' → ' + fK(price), null));
+    cards.push(card('máxima do ciclo', cyc.high ? fK(cyc.high.price) : '—', GREEN,
+                    cyc.high ? fD(cyc.high.t) : '', 'topo se confirma após ' + C.TOP_CONFIRM_DAYS + ' dias sem nova máxima e queda de ' + (C.TOP_CONFIRM_DROP * 100) + '%'));
   } else {
-    cyclePct   = Math.min(100, Math.round((daysSinceFundo - BULL_MID) / BEAR_MID * 100));
-    cycleTotal = BEAR_MID + ' dias (mid)';
-    cycleColor = '#f07070';
+    cards.push(card('dias desde o topo', t, RED, 'topo em ' + fD(topT), null));
+    var bTxt, bSub, b1 = addD(topT, C.BEAR_MIN), b2 = addD(topT, C.BEAR_MAX);
+    if (state === 'bear')            { bTxt = (C.BEAR_MIN - t) + ' d'; bSub = 'até abrir a janela de fundo'; }
+    else if (state === 'bottomzone') { bTxt = (C.BEAR_MAX - t) + ' d'; bSub = 'até fechar a janela de fundo'; }
+    else                             { bTxt = '+' + (t - C.BEAR_MAX) + ' d'; bSub = 'além da janela de fundo'; }
+    cards.push(card('janela de fundo', bTxt, inZone ? RED : LRED, bSub, fD(b1) + ' a ' + fD(b2), inZone));
+    var dd = price && cyc.top.price ? (price / cyc.top.price - 1) * 100 : null;
+    cards.push(card('queda desde o topo', dd !== null ? '−' + Math.abs(Math.round(dd)) + '%' : '—', RED,
+                    fK(cyc.top.price) + ' → ' + fK(price), 'ciclos anteriores: −84% (2018) e −77% (2022)'));
+    if (cyc.low) {
+      var lowAge = Math.floor((now - cyc.low.t) / DAY_MS);
+      cards.push(card('mínima do ciclo', fK(cyc.low.price), AMBER,
+                      fD(cyc.low.t) + (lowAge > 0 ? ' · há ' + lowAge + ' d' : ' · hoje'),
+                      'fundo se confirma após ' + C.LOW_CONFIRM_DAYS + ' dias sem nova mínima (' + Math.min(lowAge, C.LOW_CONFIRM_DAYS) + '/' + C.LOW_CONFIRM_DAYS + ')'));
+    } else {
+      cards.push(card('mínima do ciclo', '—', AMBER, 'histórico indisponível', null));
+    }
   }
-  html += '<div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">';
-  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">fase concluída</div>';
-  html += '<div style="font-family:var(--mono);font-size:26px;font-weight:700;color:' + cycleColor + ';line-height:1;">' + cyclePct + '%</div>';
-  html += '<div style="height:3px;background:var(--border);border-radius:2px;margin:8px 0 3px;">';
-  html += '<div style="height:3px;width:' + cyclePct + '%;background:' + cycleColor + ';border-radius:2px;transition:width 1s ease;"></div></div>';
-  html += '<div style="font-size:9px;color:var(--muted);">ref. ' + cycleTotal + '</div>';
-  html += '</div>';
+  html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px;">' + cards.join('') + '</div>';
 
-  // Card 4: padrão histórico referência
-  html += '<div style="background:var(--bg3);border-radius:10px;padding:13px 14px;border:0.5px solid var(--border);">';
-  html += '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px;">padrão histórico</div>';
-  html += '<div style="font-size:11px;color:#4fd98a;font-family:var(--mono);line-height:1.7;">Bull 1050–1100d<br><span style="color:#f09595;">Bear &nbsp;350–420d</span></div>';
-  html += '<div style="font-size:9px;color:var(--muted);margin-top:4px;">ciclos 3 e 4 · exatos</div>';
-  html += '</div>';
-
-  html += '</div>';
-
-  // ── insight note ─────────────────────────────────────────
-  var noteColor = isBull ? '#9fc865' : '#e08080';
-  var noteBg    = isBull ? '#071a10' : '#1a0808';
-  var noteBorder= isBull ? '#1d5e39' : '#5e1a1a';
-  var noteText;
-  if (isBull && !inZone)
-    noteText = 'Padrão histórico (ciclos 3 e 4): <strong style="color:var(--text)">1.064 dias exatos</strong> do fundo ao topo. Com margem ±25 dias: janela de topo em <strong style="color:#4fd98a">' + projTopMin + ' a ' + projTopMax + '</strong>. Quando o MVRV superar 3,5 dentro dessa janela, considere reduzir posição gradualmente.';
-  else if (isBull && inZone)
-    noteText = '<strong style="color:#4fd98a">Você está dentro da janela histórica de topo.</strong> Os ciclos 3 e 4 atingiram o pico entre o dia ' + BULL_MIN + ' e ' + BULL_MAX + '. Acompanhe o MVRV — acima de 3,5 é zona de distribuição ativa.';
-  else if (!isBull && !inZone)
-    noteText = 'Bear market em curso. Topo projetado em <strong style="color:var(--text)">' + fmtDateFull(projectedTopDate) + '</strong> (dia ' + BULL_MID + ' do fundo). Zona de fundo histórica: dia ' + (BULL_MID+BEAR_MIN) + ' ao ' + (BULL_MID+BEAR_MAX) + '. Janela: <strong style="color:#f09595">' + projFundoMin + ' a ' + projFundoMax + '</strong>.';
+  // ── note ──────────────────────────────────────────────
+  var note;
+  if (state === 'bull')
+    note = 'Bull market em curso desde ' + fD(cyc.bottom.t) + '. Pelo padrão, a janela de topo abre em <strong style="color:' + GREEN + '">' + fD(addD(cyc.bottom.t, C.BULL_MIN)) + '</strong>. Quando o MVRV passar de 3,5 dentro dela, considere reduzir posição aos poucos.';
+  else if (state === 'topzone')
+    note = '<strong style="color:' + GREEN + '">Dentro da janela histórica de topo.</strong> Acompanhe o MVRV — acima de 3,5 é zona de distribuição.';
+  else if (state === 'bull-late')
+    note = 'A janela de topo passou sem um topo confirmado — o ciclo está mais longo que o padrão. Dê mais peso ao MVRV do que ao calendário.';
+  else if (state === 'bear')
+    note = 'Topo confirmado em <strong style="color:var(--text)">' + fD(topT) + '</strong> (dia ' + topDayNum + ' do ciclo). A janela de fundo abre em <strong style="color:' + LRED + '">' + fD(addD(topT, C.BEAR_MIN)) + '</strong>.';
+  else if (state === 'bottomzone')
+    note = 'O topo veio no dia ' + topDayNum + ' (' + fD(topT) + '), dentro do padrão. Hoje é o dia ' + t + ' do bear, <strong style="color:' + RED + '">dentro da janela histórica de fundo</strong>, que fecha em ' + fD(addD(topT, C.BEAR_MAX)) + '. ' +
+           (cyc.low && (now - cyc.low.t) / DAY_MS < 14 ? 'Mas o preço ainda está fazendo novas mínimas, então o fundo não está confirmado. ' : '') +
+           'Use o MVRV como confirmação: abaixo de 1 é a zona de capitulação dos fundos anteriores.';
   else
-    noteText = '<strong style="color:#f07070">Você está dentro da janela histórica de fundo.</strong> Acompanhe o MVRV — abaixo de 1,5 é zona de acumulação forte. Bear markets anteriores duraram entre ' + BEAR_MIN + ' e ' + BEAR_MAX + ' dias após o topo.';
-
-  html += '<div style="font-size:12px;color:' + noteColor + ';background:' + noteBg + ';border-radius:8px;padding:12px 16px;border:0.5px solid ' + noteBorder + ';line-height:1.7;">' + noteText + '</div>';
+    note = 'A janela de fundo (' + C.BEAR_MIN + '–' + C.BEAR_MAX + ' dias) passou sem fundo confirmado — este bear está mais longo que os dois anteriores. O calendário perde força aqui; dê mais peso ao MVRV e à mínima do ciclo.';
+  var nCol = isBull ? '#9fc865' : '#e08080', nBg = isBull ? '#071a10' : '#1a0808', nBd = isBull ? '#1d5e39' : '#5e1a1a';
+  html += '<div style="font-size:12px;color:' + nCol + ';background:' + nBg + ';border-radius:8px;padding:12px 16px;border:0.5px solid ' + nBd + ';line-height:1.7;">' + note + '</div>';
 
   document.getElementById('cycle-card').innerHTML = html;
 }
@@ -1730,7 +1723,7 @@ async function fetchPrice() {
 async function fetchAll() {
   document.getElementById('last-update').textContent = 'atualizando...';
   try {
-    renderCyclePosition();
+    renderCyclePosition().catch(function(e){ console.error('[ciclo]', e); });
     var price = await fetchPrice();
     setEl('btc-price', fmtPrice(price));
     await Promise.all([
