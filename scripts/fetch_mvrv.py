@@ -21,7 +21,13 @@ UPDATED = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 OUTFILE = 'data/mvrv.json'
 os.makedirs('data', exist_ok=True)
 
-CALIBRATION_FACTOR = 1.549  # update when market changes major phase
+# Fator de calibração: defina em GitHub → Settings → Secrets and variables →
+# Actions → aba "Variables" → MVRV_CALIBRATION. Assim dá para recalibrar sem
+# editar este arquivo. Fórmula: valor do CheckOnChain ÷ raw_vwap_mvrv (do mvrv.json).
+try:
+    CALIBRATION_FACTOR = float(os.environ.get('MVRV_CALIBRATION') or 1.549)
+except ValueError:
+    CALIBRATION_FACTOR = 1.549
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
